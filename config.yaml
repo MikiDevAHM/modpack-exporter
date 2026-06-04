@@ -1,0 +1,59 @@
+#============================================================
+#ORB Modpack Exporter – Configuration File
+#============================================================
+
+pack_name: Origin Realms Beyond
+version: 0.1.4
+minecraft_version: 1.21.11
+fabric_loader_version: 0.18.3
+
+lite_pack_name: Origin Realms Beyond Lite
+lite_version: 0.1.0-lite
+
+include_folders:
+  - config
+  - resourcepacks
+  - shaderpacks
+  - essential
+  - fancymenu_data
+  - data
+  - keybind_presets
+  - configureddefaults
+
+include_files:
+  - checkbox_states.json
+  - emi.json
+
+exclude_subfolders:
+  essential:
+    - avatar-cache
+    - cosmetic-cache
+    - screenshot-cache
+    - screenshot-metadata
+    - cache
+    - ice-logs
+    - image-cache
+
+config_exclude:
+  - fancymenu
+  - defaultoptions
+  - simpleupdatechecker_modpack.json
+
+lite_whitelist:
+  mods:
+    - fabric-api
+    - iris
+    - modmenu
+    - sodium
+  resource_packs:
+    - Faithful_32x.zip
+    - FreshAnimations_v1.9.zip
+
+modrinth_id: O5wGsyGR
+modrinth_url: https://modrinth.com/modpack/origin-realms-beyond
+
+lite_modrinth_id: HCPOsdD1
+lite_modrinth_url: https://modrinth.com/modpack/orb-lite
+
+github_repo: https://github.com/OR-Beyond/OR-Beyond-Versions.git
+github_branch: main

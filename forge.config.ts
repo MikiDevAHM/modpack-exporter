@@ -1,0 +1,30 @@
+import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerZIP } from '@electron-forge/maker-zip';
+import { VitePlugin } from '@electron-forge/plugin-vite';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
+
+const config: ForgeConfig = {
+  packagerConfig: {
+    asar: true,
+    extraResource: ['core.py', 'export_runner.py', 'sync_mods.py', 'config.yaml'],
+    executableName: 'orb-modpack-exporter',
+  },
+  rebuildConfig: {},
+  makers: [
+    new MakerSquirrel({ name: 'orb_modpack_exporter' }),
+    new MakerZIP({}, ['darwin', 'linux']),
+  ],
+  plugins: [
+    new AutoUnpackNativesPlugin({}),
+    new VitePlugin({
+      build: [
+        { entry: 'src/main/index.ts', config: 'vite.main.config.ts', target: 'main' },
+        { entry: 'src/preload/preload.ts', config: 'vite.preload.config.ts', target: 'preload' },
+      ],
+      renderer: [{ name: 'main_window', config: 'vite.renderer.config.ts' }],
+    }),
+  ],
+};
+
+export default config;

@@ -1,0 +1,47 @@
+{
+  "name": "orb-modpack-exporter",
+  "productName": "ORB Modpack Exporter",
+  "version": "1.0.0",
+  "description": "Collaborate via GitHub, export .mrpack files, and track changes",
+  "main": ".vite/build/index.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "config": {
+    "forge": "./forge.config.ts"
+  },
+  "author": "ORB Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/core": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.4.0",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
+    "@electron-forge/plugin-vite": "^7.4.0",
+    "@electron-forge/publisher-github": "^7.11.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.12.7",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "electron": "^42.3.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "~5.4.5",
+    "vite": "^5.1.6"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.2",
+    "electron-squirrel-startup": "^1.0.0",
+    "electron-store": "^8.2.0",
+    "js-yaml": "^4.1.0",
+    "lucide-react": "^0.378.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.4.1"
+  }
+}

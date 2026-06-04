@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "paths": { "@/*": ["./src/renderer/*"] }
+  },
+  "include": ["src", "forge.config.ts", "vite.*.ts", "vite.*.js"]
+}

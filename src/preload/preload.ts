@@ -1,0 +1,89 @@
+import { contextBridge, ipcRenderer } from 'electron';
+
+export interface DeviceCodeInfo {
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+}
+
+const api = {
+  platform: process.platform,
+
+  // ── Auth (device flow) ────────────────────────────────────────────────────
+  auth: {
+    /** Starts the device flow. Resolves with { success, token?, user?, error? } once
+     *  the user has approved (or the flow times out / is aborted). */
+    start: () => ipcRenderer.invoke('device-auth:start'),
+
+    /** Aborts any pending flow and clears the stored token. */
+    logout: () => ipcRenderer.invoke('device-auth:logout'),
+
+    /** Resolves with { success, authenticated, user?, error? }. */
+    check: () => ipcRenderer.invoke('device-auth:check'),
+
+    /** Subscribe to device-code events emitted during `start()`. The handler
+     *  receives the user_code + verification_uri to display. Replaces any
+     *  previously registered handler. */
+    onDeviceCode: (handler: (info: DeviceCodeInfo) => void) => {
+      ipcRenderer.removeAllListeners('device-auth:code');
+      ipcRenderer.on('device-auth:code', (_event, info: DeviceCodeInfo) => handler(info));
+    },
+
+    /** Remove all device-code listeners. Call when the auth modal closes. */
+    offDeviceCode: () => ipcRenderer.removeAllListeners('device-auth:code'),
+  },
+
+  settings: {
+    get: (key: string) => ipcRenderer.invoke('settings:get', key),
+    set: (key: string, val: string) => ipcRenderer.invoke('settings:set', key, val),
+    getAll: () => ipcRenderer.invoke('settings:get-all'),
+  },
+  config: {
+    read: () => ipcRenderer.invoke('config:read'),
+    write: (data: unknown) => ipcRenderer.invoke('config:write', data),
+    readExportState: () => ipcRenderer.invoke('config:read-export-state'),
+  },
+  github: {
+    getUser: () => ipcRenderer.invoke('github:get-user'),
+    getCommits: (o: unknown) => ipcRenderer.invoke('github:get-commits', o),
+    getCommitFiles: (o: unknown) => ipcRenderer.invoke('github:get-commit-files', o),
+    getIssues: (o: unknown) => ipcRenderer.invoke('github:get-issues', o),
+  },
+  git: {
+    pull: () => ipcRenderer.invoke('git:pull'),
+    push: (o: unknown) => ipcRenderer.invoke('git:push', o),
+    status: () => ipcRenderer.invoke('git:status'),
+    stagedFiles: () => ipcRenderer.invoke('git:staged-files'),
+  },
+  python: { syncMods: () => ipcRenderer.invoke('python:sync-mods') },
+  export: { run: (o: unknown) => ipcRenderer.invoke('export:run', o) },
+  modpack: {
+    info: () => ipcRenderer.invoke('modpack:info'),
+    detectRoot: () => ipcRenderer.invoke('modpack:detect-root'),
+    deepScan: () => ipcRenderer.invoke('modpack:deep-scan'),
+    abortScan: () => ipcRenderer.invoke('modpack:abort-scan'),
+    listProfiles: () => ipcRenderer.invoke('modpack:list-profiles'),
+    setRootFromProfile: (profilePath: string) => ipcRenderer.invoke('modpack:set-root-from-profile', profilePath),
+    setRoot: (p: string) => ipcRenderer.invoke('modpack:set-root', p),
+    getRoot: () => ipcRenderer.invoke('modpack:get-root'),
+    onRootFound: (handler: (data: { path: string }) => void) => {
+      ipcRenderer.removeAllListeners('modpack:root-found');
+      ipcRenderer.on('modpack:root-found', (_e, data: { path: string }) => handler(data));
+    },
+    offRootFound: () => ipcRenderer.removeAllListeners('modpack:root-found'),
+    onScanProgress: (handler: (data: { message: string }) => void) => {
+      ipcRenderer.removeAllListeners('modpack:scan-progress');
+      ipcRenderer.on('modpack:scan-progress', (_e, data: { message: string }) => handler(data));
+    },
+    offScanProgress: () => ipcRenderer.removeAllListeners('modpack:scan-progress'),
+  },
+  app: {
+    openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
+    selectDirectory: () => ipcRenderer.invoke('app:select-directory'),
+    minimize: () => ipcRenderer.invoke('app:minimize'),
+    maximize: () => ipcRenderer.invoke('app:maximize'),
+    close: () => ipcRenderer.invoke('app:close'),
+  },
+};
+
+contextBridge.exposeInMainWorld('electron', api);
