@@ -37,6 +37,7 @@ const api = {
     get: (key: string) => ipcRenderer.invoke('settings:get', key),
     set: (key: string, val: string) => ipcRenderer.invoke('settings:set', key, val),
     getAll: () => ipcRenderer.invoke('settings:get-all'),
+    testWebhook: (url: string) => ipcRenderer.invoke('settings:test-webhook', { url }),
   },
   config: {
     read: () => ipcRenderer.invoke('config:read'),
@@ -54,9 +55,26 @@ const api = {
     push: (o: unknown) => ipcRenderer.invoke('git:push', o),
     status: () => ipcRenderer.invoke('git:status'),
     stagedFiles: () => ipcRenderer.invoke('git:staged-files'),
+    onSyncProgress: (handler: (data: { stage: string; message: string; percent: number }) => void) => {
+      ipcRenderer.removeAllListeners('sync:progress');
+      ipcRenderer.on('sync:progress', (_e, data: { stage: string; message: string; percent: number }) => handler(data));
+    },
+    offSyncProgress: () => ipcRenderer.removeAllListeners('sync:progress'),
   },
   python: { syncMods: () => ipcRenderer.invoke('python:sync-mods') },
-  export: { run: (o: unknown) => ipcRenderer.invoke('export:run', o) },
+  export: {
+    run: (o: unknown) => ipcRenderer.invoke('export:run', o),
+    mrpack: (o: unknown) => ipcRenderer.invoke('export:mrpack', o),
+    saveDialog: (opts: unknown) => ipcRenderer.invoke('export:save-dialog', opts),
+    latestModrinthVersion: (projectId: string) => ipcRenderer.invoke('export:latest-modrinth-version', { projectId }),
+    manifestVersion: () => ipcRenderer.invoke('export:manifest-version'),
+    generateChangelog: (o: unknown) => ipcRenderer.invoke('export:generate-changelog', o),
+    onProgress: (handler: (data: { stage: string; message: string; percent: number }) => void) => {
+      ipcRenderer.removeAllListeners('export:progress');
+      ipcRenderer.on('export:progress', (_e, data: { stage: string; message: string; percent: number }) => handler(data));
+    },
+    offProgress: () => ipcRenderer.removeAllListeners('export:progress'),
+  },
   modpack: {
     info: () => ipcRenderer.invoke('modpack:info'),
     detectRoot: () => ipcRenderer.invoke('modpack:detect-root'),
@@ -79,6 +97,7 @@ const api = {
   },
   app: {
     openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
+    showInFolder: (filePath: string) => ipcRenderer.invoke('app:show-in-folder', filePath),
     selectDirectory: () => ipcRenderer.invoke('app:select-directory'),
     minimize: () => ipcRenderer.invoke('app:minimize'),
     maximize: () => ipcRenderer.invoke('app:maximize'),

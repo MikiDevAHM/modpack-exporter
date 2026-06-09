@@ -24,12 +24,14 @@ interface Props {
   syncStatus: SyncStatus;
   issues: Issue[];
   lastExportTime: string | null;
+  manifestVersion: number | null;
+  modrinthRelease: string | null;
   onPull: () => void;
   onPush: () => void;
   onReportBug: () => void;
 }
 
-export default function Sidebar({ config, syncStatus, issues, lastExportTime, onPull, onPush, onReportBug }: Props) {
+export default function Sidebar({ config, syncStatus, issues, lastExportTime, manifestVersion, modrinthRelease, onPull, onPush, onReportBug }: Props) {
   return (
     <div
       className="flex-shrink-0 flex flex-col gap-4 overflow-y-auto p-5 border-l border-white/[0.06]"
@@ -42,7 +44,8 @@ export default function Sidebar({ config, syncStatus, issues, lastExportTime, on
           {config ? (
             <>
               <Row label="Pack" value={config.pack_name} />
-              <Row label="Dev version" value={config.version} />
+              <Row label="Dev version" value={manifestVersion !== null ? String(manifestVersion) : 'N/A'} />
+              <Row label="Modrinth release" value={modrinthRelease ? `v${modrinthRelease}` : 'N/A'} />
               <Row label="Minecraft" value={config.minecraft_version} />
               <div className="h-px bg-white/[0.06] my-0.5" />
               <Row

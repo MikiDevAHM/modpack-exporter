@@ -9,13 +9,16 @@ import PushModal from './components/PushModal';
 import ExportModal from './components/ExportModal';
 import SettingsModal from './components/SettingsModal';
 import LoginModal from './components/LoginModal';
+import PullResultPopup from './components/PullResultPopup';
 
 import type {
   AppConfig,
   CommitCard,
+  CommitFile,
   GitHubUser,
   Issue,
   ModChange,
+  PullResult,
   SyncStatus,
 } from './types';
 
@@ -41,12 +44,20 @@ export default function App() {
   });
   const [lastExportTime, setLastExportTime] = useState<string | null>(null);
   const [isLoadingCommits, setIsLoadingCommits] = useState(false);
+  const [manifestVersion, setManifestVersion] = useState<number | null>(null);
+  const [modrinthRelease, setModrinthRelease] = useState<string | null>(null);
 
   // ── Modal visibility ───────────────────────────────────────────────────────
   const [showPush, setShowPush] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+
+  // ── Pull result popup (manual pulls only) ─────────────────────────────────
+  const [pullResult, setPullResult] = useState<PullResult | null>(null);
+
+  // ── Background auto-sync state ─────────────────────────────────────────────
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   const checkAuth = useCallback(async () => {
@@ -133,7 +144,7 @@ export default function App() {
             url: c.html_url,
             modChanges: [] as ModChange[],
             configChanged: false,
-            files: [],
+            files: [] as CommitFile[],
             detailsLoaded: false,
           }));
           setCommits(cards);
@@ -153,7 +164,17 @@ export default function App() {
     const cfgRes = await window.electron.config.read();
     if (cfgRes.success && cfgRes.data) {
       setConfig(cfgRes.data);
-      await Promise.all([loadCommits(cfgRes.data), loadIssues(cfgRes.data), loadGitStatus()]);
+      const projectId =
+        (await window.electron.settings.get('modrinthProjectId').catch(() => null)) || 'O5wGsyGR';
+      const [mvRes, mrRes] = await Promise.all([
+        window.electron.export.manifestVersion(),
+        window.electron.export.latestModrinthVersion(projectId).catch(() => ({ version_number: null as null })),
+        loadCommits(cfgRes.data),
+        loadIssues(cfgRes.data),
+        loadGitStatus(),
+      ]);
+      if (mvRes.success) setManifestVersion(mvRes.versionId);
+      if (mrRes.version_number) setModrinthRelease(mrRes.version_number);
     }
 
     // Surface a hint if modpack root isn't configured yet.
@@ -162,7 +183,23 @@ export default function App() {
     if (!root) {
       toast('Set your modpack root in Settings to enable git + export', { icon: '⚙️' });
       setShowSettings(true);
+      return;
     }
+
+    // Auto-pull silently in background after dashboard loads
+    void (async () => {
+      setIsAutoSyncing(true);
+      try {
+        const r = await window.electron.git.pull();
+        if (r.success) {
+          const [, cfgR] = await Promise.all([loadGitStatus(), window.electron.config.read()]);
+          if (cfgR.success && cfgR.data) await loadCommits(cfgR.data);
+        } else if (r.error) {
+          toast.error(`Auto-sync failed: ${r.error}`);
+        }
+      } catch {}
+      setIsAutoSyncing(false);
+    })();
   }, [loadConfig, loadExportState, loadCommits, loadIssues, loadGitStatus]);
 
   // ── App startup ────────────────────────────────────────────────────────────
@@ -207,6 +244,12 @@ export default function App() {
       toast.success('Pulled & synced mods');
       await loadGitStatus();
       if (config) await loadCommits(config);
+      const hasChanges =
+        (r.addedMods?.length ?? 0) +
+        (r.updatedMods?.length ?? 0) +
+        (r.removedMods?.length ?? 0) +
+        (r.changedFiles?.length ?? 0) > 0;
+      if (hasChanges) setPullResult(r);
     } else {
       toast.error(`Pull failed: ${r.error}`);
     }
@@ -214,8 +257,12 @@ export default function App() {
 
   const handlePushSuccess = async () => {
     setShowPush(false);
-    await loadGitStatus();
-    if (config) await loadCommits(config);
+    const [mvRes] = await Promise.all([
+      window.electron.export.manifestVersion(),
+      loadGitStatus(),
+      ...(config ? [loadCommits(config)] : []),
+    ]);
+    if (mvRes.success) setManifestVersion(mvRes.versionId);
   };
 
   const handleExportSuccess = async () => {
@@ -229,8 +276,14 @@ export default function App() {
     setShowSettings(false);
     const root = await window.electron.settings.get('modpackRoot');
     setModpackRootSet(!!root);
-    // Refresh anything that depends on modpackRoot
-    await Promise.all([loadGitStatus(), loadExportState()]);
+    const projectId =
+      (await window.electron.settings.get('modrinthProjectId').catch(() => null)) || 'O5wGsyGR';
+    const [mrRes] = await Promise.all([
+      window.electron.export.latestModrinthVersion(projectId).catch(() => ({ version_number: null as null })),
+      loadGitStatus(),
+      loadExportState(),
+    ]);
+    if (mrRes.version_number) setModrinthRelease(mrRes.version_number);
   };
 
   const handleLoginRequest = () => setShowLogin(true);
@@ -329,6 +382,8 @@ export default function App() {
           syncStatus={syncStatus}
           issues={issues}
           lastExportTime={lastExportTime}
+          manifestVersion={manifestVersion}
+          modrinthRelease={modrinthRelease}
           onPull={handlePull}
           onPush={() => setShowPush(true)}
           onReportBug={() =>
@@ -353,6 +408,26 @@ export default function App() {
       )}
       {showLogin && (
         <LoginModal onClose={() => setShowLogin(false)} onSuccess={handleLoginSuccess} />
+      )}
+      {pullResult && (
+        <PullResultPopup
+          addedMods={pullResult.addedMods ?? []}
+          updatedMods={pullResult.updatedMods ?? []}
+          removedMods={pullResult.removedMods ?? []}
+          changedFiles={pullResult.changedFiles ?? []}
+          onDismiss={() => setPullResult(null)}
+        />
+      )}
+
+      {/* Auto-sync status indicator */}
+      {isAutoSyncing && (
+        <div
+          className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs z-30 select-none"
+          style={{ background: 'rgba(30,30,30,0.9)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#58a6ff' }} />
+          Syncing…
+        </div>
       )}
 
       {/* Hint indicator at bottom if modpackRoot still unset */}

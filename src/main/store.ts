@@ -7,6 +7,8 @@ export interface StoreSchema {
   lastPullTime: string;
   lastExportTime: string;
   lastScanDriveRoot: string;
+  discordWebhook: string;
+  modrinthProjectId: string;
 }
 
 export const store = new Store<StoreSchema>({
@@ -17,5 +19,7 @@ export const store = new Store<StoreSchema>({
     lastPullTime: '',
     lastExportTime: '',
     lastScanDriveRoot: '',
+    discordWebhook: '',
+    modrinthProjectId: 'O5wGsyGR',
   },
 });

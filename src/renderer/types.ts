@@ -27,6 +27,13 @@ export interface ModChange {
   name: string;
 }
 
+export interface CommitFile {
+  path: string;
+  status: 'added' | 'modified' | 'removed' | 'renamed' | 'copied' | string;
+  additions: number;
+  deletions: number;
+}
+
 export interface CommitCard {
   sha: string;
   message: string;
@@ -35,7 +42,7 @@ export interface CommitCard {
   url: string;
   modChanges: ModChange[];
   configChanged: boolean;
-  files: string[];
+  files: CommitFile[];
   detailsLoaded: boolean;
 }
 
@@ -90,6 +97,71 @@ export interface ExportResult {
   error?: string;
 }
 
+export interface PullModEntry {
+  slug: string;
+  name: string;
+  projectId: string | null;
+  iconUrl: string | null;
+  versionNumber: string | null;
+  source: 'modrinth' | 'local';
+}
+
+export interface PullModUpdate {
+  slug: string;
+  name: string;
+  projectId: string | null;
+  iconUrl: string | null;
+  oldVersionNumber: string | null;
+  newVersionNumber: string | null;
+}
+
+export interface PullFileChange {
+  path: string;
+  status: 'added' | 'modified' | 'removed';
+}
+
+export interface PullResult {
+  success: boolean;
+  pulled?: boolean;
+  modsDownloaded?: number;
+  modsRemoved?: number;
+  modsSkipped?: string[];
+  filesUpdated?: number;
+  filesSkipped?: string[];
+  errors?: string[];
+  addedMods?: PullModEntry[];
+  updatedMods?: PullModUpdate[];
+  removedMods?: PullModEntry[];
+  changedFiles?: PullFileChange[];
+  error?: string;
+}
+
+export interface ChangelogModEntry {
+  path: string;
+  name: string;
+}
+
+export interface ChangelogDiff {
+  from: string;
+  addedMods: ChangelogModEntry[];
+  removedMods: ChangelogModEntry[];
+  updatedMods: ChangelogModEntry[];
+  addedFiles: string[];
+  removedFiles: string[];
+  changedFiles: string[];
+}
+
+export interface ChangelogResult {
+  success: boolean;
+  type: 'initial' | 'diff' | 'no_changes';
+  snapshotExists: boolean;
+  diff: ChangelogDiff | null;
+  markdown: string;
+  error?: string;
+  warning?: string;
+  note?: string;
+}
+
 export interface DeviceCodeInfo {
   user_code: string;
   verification_uri: string;
@@ -125,6 +197,7 @@ declare global {
         get: (key: string) => Promise<string | null>;
         set: (key: string, val: string) => Promise<void>;
         getAll: () => Promise<Record<string, string>>;
+        testWebhook: (url: string) => Promise<{ success: boolean; error?: string }>;
       };
       config: {
         read: () => Promise<{ success: boolean; data?: AppConfig; error?: string }>;
@@ -134,17 +207,28 @@ declare global {
       github: {
         getUser: () => Promise<{ success: boolean; data?: GitHubUser; error?: string }>;
         getCommits: (o: { owner: string; repo: string; branch: string }) => Promise<{ success: boolean; data?: any[]; error?: string }>;
-        getCommitFiles: (o: { owner: string; repo: string; sha: string }) => Promise<{ success: boolean; data?: { files: string[]; modChanges: ModChange[]; configChanged: boolean }; error?: string }>;
+        getCommitFiles: (o: { owner: string; repo: string; sha: string }) => Promise<{ success: boolean; data?: { files: CommitFile[]; modChanges: ModChange[]; configChanged: boolean }; error?: string }>;
         getIssues: (o: { owner: string; repo: string }) => Promise<{ success: boolean; data?: Issue[]; error?: string }>;
       };
       git: {
-        pull: () => Promise<{ success: boolean; output?: string; error?: string }>;
+        pull: () => Promise<PullResult>;
         push: (o: { message: string }) => Promise<{ success: boolean; output?: string; error?: string }>;
         status: () => Promise<{ success: boolean; data?: SyncStatus; error?: string }>;
         stagedFiles: () => Promise<{ success: boolean; data?: string[] }>;
+        onSyncProgress: (handler: (data: { stage: string; message: string; percent: number }) => void) => void;
+        offSyncProgress: () => void;
       };
       python: { syncMods: () => Promise<{ success: boolean; data?: any; error?: string }> };
-      export: { run: (o: ExportOptions) => Promise<ExportResult> };
+      export: {
+        run: (o: ExportOptions) => Promise<ExportResult>;
+        mrpack: (o: { outputPath: string; version: string; changelog?: string; overwriteSnapshot?: boolean }) => Promise<{ success: boolean; path?: string; size?: number; error?: string }>;
+        saveDialog: (opts: { defaultPath?: string }) => Promise<string | null>;
+        latestModrinthVersion: (projectId: string) => Promise<{ version_number: string | null; versionId?: string; publishedAt?: string; reason?: string }>;
+        manifestVersion: () => Promise<{ success: boolean; versionId: number | null; error?: string }>;
+        generateChangelog: (o: { version: string }) => Promise<ChangelogResult>;
+        onProgress: (handler: (data: { stage: string; message: string; percent: number }) => void) => void;
+        offProgress: () => void;
+      };
       modpack: {
         info: () => Promise<{ success: boolean; data?: ModpackInfo; error?: string }>;
         detectRoot: () => Promise<{ success: boolean; path: string | null }>;
@@ -161,6 +245,7 @@ declare global {
       };
       app: {
         openExternal: (url: string) => Promise<void>;
+        showInFolder: (filePath: string) => Promise<void>;
         selectDirectory: () => Promise<string | null>;
         minimize: () => Promise<void>;
         maximize: () => Promise<void>;

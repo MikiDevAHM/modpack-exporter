@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, FolderOpen, Loader2, Github, Check, LogOut, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, FolderOpen, Loader2, Github, Check, LogOut, AlertCircle, RefreshCw, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { GitHubUser, ModrinthProfile } from '../types';
 
@@ -28,7 +28,11 @@ export default function SettingsModal({
 }: Props) {
   const [modpackRoot, setModpackRoot] = useState('');
   const [exportDir, setExportDir] = useState('');
+  const [discordWebhook, setDiscordWebhook] = useState('');
+  const [modrinthProjectId, setModrinthProjectId] = useState('O5wGsyGR');
   const [isSaving, setIsSaving] = useState(false);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [mouseDownTarget, setMouseDownTarget] = useState<EventTarget | null>(null);
   const [scanningProfiles, setScanningProfiles] = useState(false);
   const [profiles, setProfiles] = useState<ModrinthProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState('');
@@ -62,6 +66,8 @@ export default function SettingsModal({
       const all = await window.electron.settings.getAll();
       if (all.exportDir) setExportDir(all.exportDir);
       if (all.modpackRoot) setModpackRoot(all.modpackRoot);
+      if (all.discordWebhook) setDiscordWebhook(all.discordWebhook);
+      if (all.modrinthProjectId) setModrinthProjectId(all.modrinthProjectId);
       await loadProfiles(all.modpackRoot || undefined);
     })();
 
@@ -107,10 +113,21 @@ export default function SettingsModal({
     await Promise.all([
       window.electron.settings.set('modpackRoot', modpackRoot.trim()),
       window.electron.settings.set('exportDir', exportDir.trim()),
+      window.electron.settings.set('discordWebhook', discordWebhook.trim()),
+      window.electron.settings.set('modrinthProjectId', modrinthProjectId.trim() || 'O5wGsyGR'),
     ]);
     setIsSaving(false);
     toast.success('Settings saved');
     onSaved();
+  };
+
+  const handleTestWebhook = async () => {
+    if (!discordWebhook.trim()) { toast.error('Enter a webhook URL first'); return; }
+    setIsTestingWebhook(true);
+    const r = await window.electron.settings.testWebhook(discordWebhook.trim());
+    setIsTestingWebhook(false);
+    if (r.success) toast.success('Test message sent!');
+    else toast.error(`Webhook test failed: ${r.error}`);
   };
 
   // ── Styling shortcuts ──────────────────────────────────────────────────────
@@ -124,11 +141,13 @@ export default function SettingsModal({
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{ background: 'rgba(0,0,0,0.75)' }}
-      onClick={e => {
-        if (dismissible && e.target === e.currentTarget) onClose();
+      onMouseDown={e => setMouseDownTarget(e.target)}
+      onMouseUp={e => {
+        if (dismissible && mouseDownTarget === e.target && e.target === e.currentTarget) onClose();
+        setMouseDownTarget(null);
       }}
     >
-      <div className="w-[500px] rounded-[12px] overflow-hidden shadow-2xl" style={{ background: '#323234' }}>
+      <div className="w-[500px] rounded-[12px] overflow-hidden shadow-2xl flex flex-col" style={{ background: '#323234', maxHeight: 'min(92vh, 760px)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
           <h2 className="text-white font-semibold text-base">
@@ -145,7 +164,7 @@ export default function SettingsModal({
         </div>
 
         {/* Body */}
-        <div className="p-5 flex flex-col gap-5">
+        <div className="p-5 flex flex-col gap-5 overflow-y-auto flex-1">
           {/* GitHub auth section */}
           <div>
             <label className={labelClass}>GitHub Account</label>
@@ -313,6 +332,61 @@ export default function SettingsModal({
                 <FolderOpen size={15} className="text-[#A9A9AB]" />
               </button>
             </div>
+          </div>
+
+          <div className="h-px bg-white/[0.06]" />
+
+          {/* Discord webhook */}
+          <div>
+            <label className={labelClass}>
+              Discord Webhook <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            </label>
+            <p className="text-[#A9A9AB] text-xs mb-2">
+              Receive a notification in Discord after every successful push.
+              Create one in your server's channel settings under Integrations.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={discordWebhook}
+                onChange={e => setDiscordWebhook(e.target.value)}
+                placeholder="https://discord.com/api/webhooks/…"
+                className={`${inputClass} flex-1`}
+                style={inputStyle}
+              />
+              <button
+                onClick={handleTestWebhook}
+                disabled={isTestingWebhook || !discordWebhook.trim()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                style={{ background: 'rgba(88,166,255,0.12)', color: '#58a6ff', border: '1px solid rgba(88,166,255,0.2)' }}
+                onMouseEnter={e => { if (discordWebhook.trim() && !isTestingWebhook) (e.currentTarget.style.background = 'rgba(88,166,255,0.2)'); }}
+                onMouseLeave={e => { (e.currentTarget.style.background = 'rgba(88,166,255,0.12)'); }}
+                title="Send a test message"
+              >
+                {isTestingWebhook ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                {isTestingWebhook ? 'Sending…' : 'Test'}
+              </button>
+            </div>
+          </div>
+
+          <div className="h-px bg-white/[0.06]" />
+
+          {/* Modrinth Project ID */}
+          <div>
+            <label className={labelClass}>
+              Modrinth Project ID <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            </label>
+            <p className="text-[#A9A9AB] text-xs mb-2">
+              Used to fetch the latest published release and suggest the next version when exporting.
+              Find it in your Modrinth project settings.
+            </p>
+            <input
+              value={modrinthProjectId}
+              onChange={e => setModrinthProjectId(e.target.value)}
+              placeholder="O5wGsyGR"
+              className={inputClass}
+              style={inputStyle}
+              spellCheck={false}
+            />
           </div>
         </div>
 
