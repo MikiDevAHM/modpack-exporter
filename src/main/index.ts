@@ -946,13 +946,22 @@ function ensureGitignore(versionsDir: string): void {
 }
 
 async function ensureVersionsRepo(versionsDir: string, token: string | null): Promise<void> {
-  fs.mkdirSync(versionsDir, { recursive: true });
-
   const repoUrlWithAuth = token
     ? `https://x-access-token:${token}@github.com/OR-Beyond/OR-Beyond-Versions.git`
     : VERSIONS_REPO_URL;
 
   const gitDir = path.join(versionsDir, '.git');
+
+  // The versions dir can be left behind in a broken, half-initialized state (e.g. a
+  // previous run created the folder but was interrupted before `git clone` populated
+  // it). A folder without a .git subfolder isn't a usable repo — wipe it so the clone
+  // below starts from a clean, nonexistent directory instead of silently no-op'ing.
+  if (fs.existsSync(versionsDir) && !fs.existsSync(gitDir)) {
+    fs.rmSync(versionsDir, { recursive: true, force: true });
+  }
+
+  fs.mkdirSync(versionsDir, { recursive: true });
+
   if (!fs.existsSync(gitDir)) {
     try {
       await runGit(['clone', repoUrlWithAuth, '.'], versionsDir);
@@ -985,6 +994,19 @@ async function ensureVersionsRepo(versionsDir: string, token: string | null): Pr
         throw pullErr;
       }
     }
+  }
+
+  // Belt-and-suspenders: .git exists but the working tree is somehow empty (e.g. a
+  // clone was interrupted after `.git` was written but before checkout completed).
+  // Force a fetch + hard reset to repopulate it. A genuinely fresh remote with no
+  // push yet will still have no manifest after this — that's a valid state callers
+  // already handle, and the fetch/reset failure here is swallowed accordingly.
+  const manifestPath = path.join(versionsDir, 'modrinth.index.json');
+  if (fs.existsSync(gitDir) && !fs.existsSync(manifestPath)) {
+    try {
+      await runGit(['fetch', 'origin', 'main'], versionsDir);
+      await runGit(['reset', '--hard', 'origin/main'], versionsDir);
+    } catch {}
   }
 }
 
