@@ -1353,23 +1353,6 @@ function registerIpc() {
         fs.existsSync(modsDir) ? fs.readdirSync(modsDir).filter((f: string) => f.endsWith('.jar')) : []
       );
 
-      // ── Smart merge: identify locally-added mods ─────────────────────────────
-      // A jar present locally BEFORE this pull but absent from the last-synced
-      // manifest is un-pushed work this maintainer added. It must be preserved,
-      // not deleted as "stale". (First pull → manifest empty → every local jar is
-      // locally-added → nothing gets deleted, which is the correct behavior.)
-      const oldManifestBasenames = new Set<string>(
-        oldManifestFiles
-          .filter((f: any) => typeof f?.path === 'string' && (f.path as string).startsWith('mods/'))
-          .map((f: any) => path.basename(f.path as string))
-      );
-      const locallyAddedSlugs = new Set<string>();
-      for (const jar of oldLocalJars) {
-        if (!oldManifestBasenames.has(jar)) {
-          locallyAddedSlugs.add(path.basename(jar, '.jar'));
-        }
-      }
-
       // 1. Clone or update the versions repo
       sendProgress('git', 'Syncing versions repository…', 5);
       await ensureVersionsRepo(versionsDir, token);
@@ -1427,9 +1410,17 @@ function registerIpc() {
       const pullState = loadPullState(versionsDir);
       const newPullStateFiles: Record<string, string> = {};
 
+      // First-pull detection: `.last_pull_state.json` is only written after a pull
+      // completes successfully, so its absence is the most reliable signal that this
+      // install has never synced before — including the case where the versions repo
+      // already exists locally (e.g. cloned earlier by a push) but nothing has ever
+      // actually been pulled down onto this machine.
+      const pullStatePath = path.join(versionsDir, '.last_pull_state.json');
+      const isFirstPull = !fs.existsSync(pullStatePath);
+
       // 4. Build manifest lookup and inventory local mods
       fs.mkdirSync(modsDir, { recursive: true });
-      const localJars = new Set(fs.readdirSync(modsDir).filter(f => f.endsWith('.jar')));
+      const overridesDir = path.join(versionsDir, 'overrides');
 
       const manifestByBasename = new Map<string, any>();
       for (const entry of manifest.files) {
@@ -1445,28 +1436,47 @@ function registerIpc() {
       const changedFiles: { path: string; status: 'added' | 'modified' | 'removed' }[] = [];
       const downloadedJars = new Set<string>(); // basenames actually installed this pull
       const deletedJars = new Set<string>();    // basenames deleted (stale, not in manifest)
+      const preservedMods: string[] = [];
 
-      // 5. Sync mods from manifest
-      const totalMods = manifestByBasename.size;
-      let modsDone = 0;
+      if (isFirstPull) {
+        // ── Clean install ────────────────────────────────────────────────────────
+        // No trustworthy local state to diff against, so instead of trying to merge,
+        // wipe everything the manifest/overrides own and rebuild it from scratch.
+        // Guarantees the local install matches the remote manifest exactly, with
+        // zero chance of leftover files from before this pull.
+        console.log('[git:pull] First pull detected — performing clean install.');
+        sendProgress('clean', 'First pull detected — performing clean install…', 17);
 
-      for (const [basename, entry] of manifestByBasename.entries()) {
-        modsDone++;
-        const percent = 15 + Math.floor((modsDone / totalMods) * 40);
+        // 5a. Wipe all local mod jars — every mod is freshly installed below.
+        for (const jar of fs.readdirSync(modsDir).filter(f => f.endsWith('.jar'))) {
+          try { fs.unlinkSync(path.join(modsDir, jar)); } catch {}
+        }
 
-        if (entry.source === 'local') {
-          const overrideJar = path.join(versionsDir, 'overrides', 'mods', basename);
-          const localPath = path.join(modsDir, basename);
-          const expectedSha512: string | undefined = entry.hashes?.sha512;
-
-          sendProgress('mods', `Checking local mod: ${basename}`, percent);
-
-          let needsCopy = !localJars.has(basename);
-          if (!needsCopy && expectedSha512) {
-            try { needsCopy = computeSha512(localPath) !== expectedSha512; } catch { needsCopy = true; }
+        // 5b. Wipe all known override folders at the modpack root.
+        const FIRST_PULL_WIPE_FOLDERS = [
+          'config', 'resourcepacks', 'shaderpacks', 'scripts', 'essential',
+          'fancymenu_data', 'data', 'keybind_presets', 'configureddefaults',
+        ];
+        for (const folder of FIRST_PULL_WIPE_FOLDERS) {
+          const folderPath = path.join(root, folder);
+          if (fs.existsSync(folderPath)) {
+            try { fs.rmSync(folderPath, { recursive: true, force: true }); } catch {}
           }
+        }
 
-          if (needsCopy) {
+        // 5c. Download/copy every mod listed in the manifest — nothing to diff
+        //     against anymore, so every entry is installed unconditionally.
+        const totalMods = manifestByBasename.size;
+        let modsDone = 0;
+
+        for (const [basename, entry] of manifestByBasename.entries()) {
+          modsDone++;
+          const percent = 20 + Math.floor((modsDone / totalMods) * 35);
+
+          if (entry.source === 'local') {
+            const overrideJar = path.join(overridesDir, 'mods', basename);
+            const localPath = path.join(modsDir, basename);
+            sendProgress('mods', `Installing local mod: ${basename}`, percent);
             if (fs.existsSync(overrideJar)) {
               fs.copyFileSync(overrideJar, localPath);
               modsDownloaded++;
@@ -1475,96 +1485,160 @@ function registerIpc() {
               modsSkipped.push(basename);
               errors.push(`Local mod missing from overrides: ${basename}`);
             }
+            continue;
           }
-          continue;
-        }
 
-        // Modrinth mod — download if missing or hash differs
-        const localPath = path.join(modsDir, basename);
-        const expectedSha512: string | undefined = entry.hashes?.sha512;
+          const localPath = path.join(modsDir, basename);
+          const downloadUrl: string | undefined =
+            Array.isArray(entry.downloads) ? entry.downloads[0] : undefined;
+          if (!downloadUrl) {
+            modsSkipped.push(basename);
+            sendProgress('mods', `No download URL for: ${basename}`, percent);
+            continue;
+          }
 
-        let needsDownload = !localJars.has(basename);
-        if (!needsDownload && expectedSha512) {
-          try { needsDownload = computeSha512(localPath) !== expectedSha512; } catch { needsDownload = true; }
-        }
-
-        if (!needsDownload) {
-          sendProgress('mods', `Up to date: ${basename}`, percent);
-          continue;
-        }
-
-        const downloadUrl: string | undefined =
-          Array.isArray(entry.downloads) ? entry.downloads[0] : undefined;
-        if (!downloadUrl) {
-          modsSkipped.push(basename);
-          sendProgress('mods', `No download URL for: ${basename}`, percent);
-          continue;
-        }
-
-        sendProgress('mods', `Downloading: ${basename}…`, percent);
-        try {
-          const resp = await fetch(downloadUrl, { headers: { 'User-Agent': 'ORB-Modpack-Exporter/1.0' } });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          fs.writeFileSync(localPath, Buffer.from(await resp.arrayBuffer()));
-          modsDownloaded++;
-          downloadedJars.add(basename);
-        } catch (dlErr: any) {
-          modsSkipped.push(basename);
-          errors.push(`Download failed for ${basename}: ${dlErr.message}`);
-          console.error(`[pull] download failed for ${basename}:`, dlErr.message);
-        }
-      }
-
-      // 6. Remove local jars not in the manifest
-      //    Smart merge: a stale jar that is locally-added (un-pushed work) is kept,
-      //    not deleted. Only jars that were previously synced and have since been
-      //    removed remotely are deleted here.
-      sendProgress('mods', 'Removing stale mods…', 57);
-      const preservedMods: string[] = [];
-      for (const localJar of localJars) {
-        if (manifestByBasename.has(localJar)) continue;
-        const slug = path.basename(localJar, '.jar');
-        if (locallyAddedSlugs.has(slug)) {
-          preservedMods.push(slug);
-          console.log(`[git:pull] preserving locally-added mod: ${localJar}`);
-          continue;
-        }
-        try { fs.unlinkSync(path.join(modsDir, localJar)); modsRemoved++; deletedJars.add(localJar); } catch {}
-      }
-
-      // 7. Sync override files (config/, resourcepacks/, shaderpacks/, scripts/)
-      //    Protected by pull state: skip files the user has locally modified.
-      //    First-time path (no .last_pull_state.json): copy everything blindly and
-      //    build the baseline — no change detection, no changedFiles reported.
-      sendProgress('overrides', 'Syncing override files…', 62);
-      const overridesDir = path.join(versionsDir, 'overrides');
-      const pullStatePath = path.join(versionsDir, '.last_pull_state.json');
-      const hasExistingState = fs.existsSync(pullStatePath);
-
-      if (!hasExistingState) {
-        // No baseline yet — copy every override file and establish the state.
-        // Treat this as a fresh install: don't report any files as "changed".
-        for (const folder of OVERRIDE_FOLDERS) {
-          const srcDir = path.join(overridesDir, folder);
-          if (!fs.existsSync(srcDir)) continue;
-
-          for (const srcFilePath of walkDir(srcDir)) {
-            const relToOverrides = path.relative(overridesDir, srcFilePath);
-            const stateKey = relToOverrides.replace(/\\/g, '/');
-            const localFilePath = path.join(root, relToOverrides);
-
-            let remoteHash: string;
-            try { remoteHash = computeSha256(srcFilePath); } catch { continue; }
-            newPullStateFiles[stateKey] = remoteHash;
-
-            fs.mkdirSync(path.dirname(localFilePath), { recursive: true });
-            fs.copyFileSync(srcFilePath, localFilePath);
-            filesUpdated++;
+          sendProgress('mods', `Downloading: ${basename}…`, percent);
+          try {
+            const resp = await fetch(downloadUrl, { headers: { 'User-Agent': 'ORB-Modpack-Exporter/1.0' } });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            fs.writeFileSync(localPath, Buffer.from(await resp.arrayBuffer()));
+            modsDownloaded++;
+            downloadedJars.add(basename);
+          } catch (dlErr: any) {
+            modsSkipped.push(basename);
+            errors.push(`Download failed for ${basename}: ${dlErr.message}`);
+            console.error(`[pull] download failed for ${basename}:`, dlErr.message);
           }
         }
-        // changedFiles stays empty — no point surfacing 1000+ "new" files on first pull.
+
+        // 5d. Copy every file under versions-repo/overrides/ (excluding mods/, which
+        //     was just handled above) to the modpack root, building the pull-state
+        //     baseline from each copied file's sha256 as we go.
+        sendProgress('overrides', 'Installing override files…', 60);
+        for (const srcFilePath of walkDir(overridesDir)) {
+          const relToOverrides = path.relative(overridesDir, srcFilePath);
+          const stateKey = relToOverrides.replace(/\\/g, '/');
+          if (stateKey.startsWith('mods/')) continue; // handled by the mod sync above
+
+          const localFilePath = path.join(root, relToOverrides);
+          let remoteHash: string;
+          try { remoteHash = computeSha256(srcFilePath); } catch { continue; }
+          newPullStateFiles[stateKey] = remoteHash;
+
+          fs.mkdirSync(path.dirname(localFilePath), { recursive: true });
+          fs.copyFileSync(srcFilePath, localFilePath);
+          filesUpdated++;
+        }
+        // changedFiles / preservedMods / modsRemoved stay at their zero-values —
+        // this is a clean install, so nothing "changed" and nothing pre-existing
+        // survives to be "preserved" or reported as "removed".
       } else {
-        // Baseline exists — compare and protect user-modified files.
+        // ── Smart merge ───────────────────────────────────────────────────────────
+        // A jar present locally BEFORE this pull but absent from the last-synced
+        // manifest is un-pushed work this maintainer added. It must be preserved,
+        // not deleted as "stale".
+        const oldManifestBasenames = new Set<string>(
+          oldManifestFiles
+            .filter((f: any) => typeof f?.path === 'string' && (f.path as string).startsWith('mods/'))
+            .map((f: any) => path.basename(f.path as string))
+        );
+        const locallyAddedSlugs = new Set<string>();
+        for (const jar of oldLocalJars) {
+          if (!oldManifestBasenames.has(jar)) {
+            locallyAddedSlugs.add(path.basename(jar, '.jar'));
+          }
+        }
+
+        const localJars = new Set(fs.readdirSync(modsDir).filter(f => f.endsWith('.jar')));
+
+        // 5. Sync mods from manifest
+        const totalMods = manifestByBasename.size;
+        let modsDone = 0;
+
+        for (const [basename, entry] of manifestByBasename.entries()) {
+          modsDone++;
+          const percent = 15 + Math.floor((modsDone / totalMods) * 40);
+
+          if (entry.source === 'local') {
+            const overrideJar = path.join(overridesDir, 'mods', basename);
+            const localPath = path.join(modsDir, basename);
+            const expectedSha512: string | undefined = entry.hashes?.sha512;
+
+            sendProgress('mods', `Checking local mod: ${basename}`, percent);
+
+            let needsCopy = !localJars.has(basename);
+            if (!needsCopy && expectedSha512) {
+              try { needsCopy = computeSha512(localPath) !== expectedSha512; } catch { needsCopy = true; }
+            }
+
+            if (needsCopy) {
+              if (fs.existsSync(overrideJar)) {
+                fs.copyFileSync(overrideJar, localPath);
+                modsDownloaded++;
+                downloadedJars.add(basename);
+              } else {
+                modsSkipped.push(basename);
+                errors.push(`Local mod missing from overrides: ${basename}`);
+              }
+            }
+            continue;
+          }
+
+          // Modrinth mod — download if missing or hash differs
+          const localPath = path.join(modsDir, basename);
+          const expectedSha512: string | undefined = entry.hashes?.sha512;
+
+          let needsDownload = !localJars.has(basename);
+          if (!needsDownload && expectedSha512) {
+            try { needsDownload = computeSha512(localPath) !== expectedSha512; } catch { needsDownload = true; }
+          }
+
+          if (!needsDownload) {
+            sendProgress('mods', `Up to date: ${basename}`, percent);
+            continue;
+          }
+
+          const downloadUrl: string | undefined =
+            Array.isArray(entry.downloads) ? entry.downloads[0] : undefined;
+          if (!downloadUrl) {
+            modsSkipped.push(basename);
+            sendProgress('mods', `No download URL for: ${basename}`, percent);
+            continue;
+          }
+
+          sendProgress('mods', `Downloading: ${basename}…`, percent);
+          try {
+            const resp = await fetch(downloadUrl, { headers: { 'User-Agent': 'ORB-Modpack-Exporter/1.0' } });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            fs.writeFileSync(localPath, Buffer.from(await resp.arrayBuffer()));
+            modsDownloaded++;
+            downloadedJars.add(basename);
+          } catch (dlErr: any) {
+            modsSkipped.push(basename);
+            errors.push(`Download failed for ${basename}: ${dlErr.message}`);
+            console.error(`[pull] download failed for ${basename}:`, dlErr.message);
+          }
+        }
+
+        // 6. Remove local jars not in the manifest
+        //    Smart merge: a stale jar that is locally-added (un-pushed work) is kept,
+        //    not deleted. Only jars that were previously synced and have since been
+        //    removed remotely are deleted here.
+        sendProgress('mods', 'Removing stale mods…', 57);
+        for (const localJar of localJars) {
+          if (manifestByBasename.has(localJar)) continue;
+          const slug = path.basename(localJar, '.jar');
+          if (locallyAddedSlugs.has(slug)) {
+            preservedMods.push(slug);
+            console.log(`[git:pull] preserving locally-added mod: ${localJar}`);
+            continue;
+          }
+          try { fs.unlinkSync(path.join(modsDir, localJar)); modsRemoved++; deletedJars.add(localJar); } catch {}
+        }
+
+        // 7. Sync override files (config/, resourcepacks/, shaderpacks/, scripts/)
+        //    Protected by pull state: skip files the user has locally modified.
+        sendProgress('overrides', 'Syncing override files…', 62);
         for (const folder of OVERRIDE_FOLDERS) {
           const srcDir = path.join(overridesDir, folder);
           if (!fs.existsSync(srcDir)) continue;
