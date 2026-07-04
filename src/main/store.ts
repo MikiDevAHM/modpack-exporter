@@ -13,6 +13,9 @@ export interface StoreSchema {
    *  has completed. Gates the first-run initialization flow so it retries on the
    *  next launch if the user quits mid-setup. */
   initialSetupComplete: string;
+  /** Optional custom Modrinth App data folder (parent of profiles/), for portable
+   *  or non-default installs the fixed %APPDATA%/ModrinthApp scan won't find. */
+  modrinthPath: string;
 }
 
 export const store = new Store<StoreSchema>({
@@ -26,5 +29,6 @@ export const store = new Store<StoreSchema>({
     discordWebhook: '',
     modrinthProjectId: 'O5wGsyGR',
     initialSetupComplete: '',
+    modrinthPath: '',
   },
 });

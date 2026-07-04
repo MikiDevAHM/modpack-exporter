@@ -420,71 +420,229 @@ async function deepScanForModpackRoot(): Promise<{ path: string; driveRoot: stri
   }
 }
 
-// ── Modrinth profile enumeration ─────────────────────────────────────────────
+// ── Multi-launcher profile scanning ──────────────────────────────────────────
+// Detects modded instances/profiles across every major Minecraft launcher. Fast
+// by design: one readdir per instances dir, one stat + one readdir (jar count)
+// per profile — no recursive directory walking except the bounded (≤3 level)
+// portable-install search below.
 
-interface ModrinthProfile {
-  name: string;        // profile folder name
-  path: string;        // full path to the profile (future modpackRoot)
-  launcherPath: string; // full path to the Modrinth folder containing profiles/
+interface LauncherProfileEntry {
+  name: string;     // instance/profile folder name
+  path: string;     // full path to the instance (future modpackRoot)
+  modCount: number; // number of .jar files directly inside its mods/ dir
+}
+
+interface LauncherProfileGroup {
+  launcher: string;      // display name, e.g. "Modrinth App"
+  launcherIcon: string;  // icon key for the renderer, e.g. "modrinth"
+  profiles: LauncherProfileEntry[];
+}
+
+interface LauncherDef {
+  id: string;
+  displayName: string;
+  /** Subfolder (relative to a base dir) holding instance/profile folders. Empty
+   *  string if the base dir itself IS that folder (e.g. CurseForge's Instances). */
+  instancesSubdir: string;
+  /** Candidate paths (relative to each instance folder) checked for a mods/ dir,
+   *  in order — first one that exists wins. */
+  modsRelativePaths: string[];
+  /** Case-insensitive name prefixes recognized during the portable drive scan. */
+  portablePrefixes: string[];
+}
+
+const LAUNCHER_DEFS: LauncherDef[] = [
+  {
+    id: 'modrinth',
+    displayName: 'Modrinth App',
+    instancesSubdir: 'profiles',
+    modsRelativePaths: ['mods'],
+    portablePrefixes: ['modrinth'],
+  },
+  {
+    id: 'prism',
+    displayName: 'Prism Launcher',
+    instancesSubdir: 'instances',
+    modsRelativePaths: [path.join('minecraft', 'mods'), path.join('.minecraft', 'mods'), 'mods'],
+    portablePrefixes: ['prismlauncher'],
+  },
+  {
+    id: 'multimc',
+    displayName: 'MultiMC',
+    instancesSubdir: 'instances',
+    modsRelativePaths: [path.join('minecraft', 'mods'), path.join('.minecraft', 'mods'), 'mods'],
+    portablePrefixes: ['multimc'],
+  },
+  {
+    id: 'atlauncher',
+    displayName: 'ATLauncher',
+    instancesSubdir: 'instances',
+    modsRelativePaths: ['mods'],
+    portablePrefixes: ['atlauncher'],
+  },
+  {
+    id: 'curseforge',
+    displayName: 'CurseForge',
+    instancesSubdir: '', // base dir resolved to .../minecraft/Instances directly
+    modsRelativePaths: ['mods'],
+    portablePrefixes: ['curseforge'],
+  },
+  {
+    id: 'gdlauncher',
+    displayName: 'GDLauncher',
+    instancesSubdir: 'instances',
+    modsRelativePaths: [path.join('minecraft', 'mods'), 'mods'],
+    portablePrefixes: ['gdlauncher'],
+  },
+];
+
+/** Number of .jar files directly inside `modsDir` (non-recursive). */
+function countJars(modsDir: string): number {
+  try {
+    return fs.readdirSync(modsDir).filter(f => f.toLowerCase().endsWith('.jar')).length;
+  } catch { return 0; }
+}
+
+/** First existing mods/ dir for an instance folder, trying each candidate in order. */
+function findModsDir(instanceDir: string, candidates: string[]): string | null {
+  for (const rel of candidates) {
+    const candidate = path.join(instanceDir, rel);
+    try {
+      if (fs.statSync(candidate).isDirectory()) return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+/** Scans one launcher's instances/profiles directory (single readdir, no recursion). */
+function scanInstancesDir(instancesDir: string, def: LauncherDef): LauncherProfileEntry[] {
+  let entries: string[];
+  try { entries = fs.readdirSync(instancesDir); } catch { return []; }
+
+  const results: LauncherProfileEntry[] = [];
+  for (const entry of entries) {
+    if (shouldSkipDir(entry)) continue;
+    const instanceDir = path.join(instancesDir, entry);
+    try {
+      if (!fs.statSync(instanceDir).isDirectory()) continue;
+    } catch { continue; }
+
+    const modsDir = findModsDir(instanceDir, def.modsRelativePaths);
+    if (!modsDir) continue;
+
+    results.push({ name: entry, path: instanceDir, modCount: countJars(modsDir) });
+  }
+  return results;
+}
+
+/** A launcher's fixed, well-known base directories (parent of its instances/profiles subdir). */
+function getKnownBaseDirs(def: LauncherDef): string[] {
+  const appData = process.env.APPDATA;
+  const userProfile = process.env.USERPROFILE;
+  const bases: string[] = [];
+
+  switch (def.id) {
+    case 'modrinth': {
+      if (appData) bases.push(path.join(appData, 'ModrinthApp'));
+      const customModrinthPath = store.get('modrinthPath');
+      if (customModrinthPath) bases.push(customModrinthPath);
+      break;
+    }
+    case 'prism':
+      if (appData) bases.push(path.join(appData, 'PrismLauncher'));
+      break;
+    case 'multimc':
+      if (appData) bases.push(path.join(appData, 'MultiMC'));
+      break;
+    case 'atlauncher':
+      if (appData) bases.push(path.join(appData, 'ATLauncher'));
+      break;
+    case 'curseforge':
+      if (userProfile) bases.push(path.join(userProfile, 'curseforge', 'minecraft', 'Instances'));
+      if (appData) bases.push(path.join(appData, 'CurseForge', 'minecraft', 'Instances'));
+      break;
+    case 'gdlauncher':
+      if (appData) bases.push(path.join(appData, 'gdlauncher_next'));
+      if (appData) bases.push(path.join(appData, 'gdlauncher'));
+      break;
+  }
+  return bases;
 }
 
 /**
- * Scans all drives up to maxDepth levels deep looking for Modrinth/profiles/<name>/mods/.
- * Collects every valid profile found before the 10-second deadline.
- * Runs per-drive in parallel; DFS is sequential within each drive.
+ * Scans every drive (up to 3 levels deep) for portable launcher installs. A
+ * top-level folder whose name matches one of a launcher's recognized prefixes
+ * (case-insensitive) and that directly contains an instances/ or profiles/
+ * subfolder becomes an extra base dir for that launcher.
  */
-async function findAllModrinthProfiles(maxDepth = 5): Promise<ModrinthProfile[]> {
-  const deadline = Date.now() + 10_000;
-  const allDrives = await getAllDriveRoots();
-  const allResults: ModrinthProfile[] = [];
+async function findPortableLauncherBases(): Promise<Map<string, string[]>> {
+  const found = new Map<string, string[]>();
+  const drives = await getAllDriveRoots();
 
-  async function scanDir(dir: string, depth: number): Promise<void> {
-    if (Date.now() > deadline) return;
-    let entries: string[];
-    try { entries = await fs.promises.readdir(dir); } catch { return; }
+  function matchLauncher(name: string): LauncherDef | null {
+    const lower = name.toLowerCase();
+    return LAUNCHER_DEFS.find(def => def.portablePrefixes.some(p => lower.startsWith(p))) ?? null;
+  }
 
-    const subdirs: string[] = [];
+  function scanDir(dir: string, depth: number): void {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
 
     for (const entry of entries) {
-      if (Date.now() > deadline) return;
-      if (shouldSkipDir(entry)) continue;
-      const entryPath = path.join(dir, entry);
+      if (!entry.isDirectory() || shouldSkipDir(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
 
-      if (entry.toLowerCase() === 'modrinth') {
-        const profilesDir = path.join(entryPath, 'profiles');
-        try {
-          const profileNames = await fs.promises.readdir(profilesDir);
-          for (const profileName of profileNames) {
-            if (Date.now() > deadline) break;
-            const profilePath = path.join(profilesDir, profileName);
-            try {
-              const st = await fs.promises.stat(profilePath);
-              if (!st.isDirectory()) continue;
-              const hasMods = await fs.promises.stat(path.join(profilePath, 'mods'))
-                .then(s => s.isDirectory()).catch(() => false);
-              if (hasMods) allResults.push({ name: profileName, path: profilePath, launcherPath: entryPath });
-            } catch {}
-          }
-        } catch {}
-        continue; // don't recurse inside the Modrinth folder itself
+      const def = matchLauncher(entry.name);
+      if (def) {
+        const hasInstances = fs.existsSync(path.join(fullPath, 'instances'));
+        const hasProfiles = fs.existsSync(path.join(fullPath, 'profiles'));
+        if (hasInstances || hasProfiles) {
+          const base = def.id === 'curseforge' ? path.join(fullPath, 'minecraft', 'Instances') : fullPath;
+          const list = found.get(def.id) ?? [];
+          list.push(base);
+          found.set(def.id, list);
+        }
+        continue; // don't recurse into a matched launcher folder
       }
 
-      if (depth < maxDepth) {
-        try {
-          const st = await fs.promises.stat(entryPath);
-          if (st.isDirectory()) subdirs.push(entryPath);
-        } catch {}
-      }
-    }
-
-    for (const sub of subdirs) {
-      if (Date.now() > deadline) return;
-      await scanDir(sub, depth + 1);
+      if (depth < 3) scanDir(fullPath, depth + 1);
     }
   }
 
-  await Promise.all(allDrives.map(drive => scanDir(drive, 0)));
-  return allResults;
+  for (const drive of drives) scanDir(drive, 0);
+  return found;
+}
+
+/**
+ * Multi-launcher profile scanner. Checks every known launcher's fixed data
+ * locations plus any portable installs found on any drive, and returns
+ * profiles grouped by launcher. Groups with zero profiles are omitted.
+ */
+async function scanAllLauncherProfiles(): Promise<LauncherProfileGroup[]> {
+  const portableBases = await findPortableLauncherBases();
+
+  const groups: LauncherProfileGroup[] = LAUNCHER_DEFS.map(def => {
+    const bases = [...getKnownBaseDirs(def), ...(portableBases.get(def.id) ?? [])];
+    const profiles: LauncherProfileEntry[] = [];
+    const seenPaths = new Set<string>();
+
+    for (const base of bases) {
+      if (!base || !fs.existsSync(base)) continue;
+      const instancesDir = def.instancesSubdir ? path.join(base, def.instancesSubdir) : base;
+      if (!fs.existsSync(instancesDir)) continue;
+
+      for (const profile of scanInstancesDir(instancesDir, def)) {
+        if (seenPaths.has(profile.path)) continue;
+        seenPaths.add(profile.path);
+        profiles.push(profile);
+      }
+    }
+
+    profiles.sort((a, b) => a.name.localeCompare(b.name));
+    return { launcher: def.displayName, launcherIcon: def.id, profiles };
+  });
+
+  return groups.filter(g => g.profiles.length > 0);
 }
 
 // ── Startup scan ────────────────────────────────────────────────────────────
@@ -1269,7 +1427,7 @@ function registerIpc() {
 
   ipcMain.handle('modpack:list-profiles', async () => {
     try {
-      const data = await findAllModrinthProfiles(5);
+      const data = await scanAllLauncherProfiles();
       return { success: true, data };
     } catch (e: any) {
       return { success: false, data: [], error: (e as Error).message };
@@ -1932,13 +2090,57 @@ function registerIpc() {
 
       saveModrinthCache(versionsDir, cache);
 
-      // 7. Compute diff stats vs previous manifest
-      const prevPaths = new Set(prevFiles.map((f: any) => f.path));
-      const newPaths = new Set(newFiles.map((f: any) => f.path));
-      const modsAdded = newFiles.filter(f => !prevPaths.has(f.path)).length;
-      const modsRemoved = prevFiles.filter((f: any) => !newPaths.has(f.path)).length;
+      // 7. Compute diff vs the previous manifest. Mods are matched by identity —
+      //    Modrinth project_id parsed from the CDN download URL, falling back to
+      //    slug (the jar's basename) for locally-bundled mods — the same identity
+      //    git:pull uses, so a mod deleted locally and pushed is recognized as
+      //    genuinely gone rather than "renamed" just because its raw path differs.
+      const parseCdnUrl = (url: string): { projectId: string; versionId: string; versionNumber: string } | null => {
+        try {
+          const parts = url.split('/');
+          // https://cdn.modrinth.com/data/{projectId}/versions/{versionId}/{filename}
+          if (parts.length < 8 || parts[3] !== 'data' || parts[5] !== 'versions') return null;
+          const projectId = parts[4];
+          const versionId = parts[6];
+          const filename = parts[7] ?? '';
+          const m = filename.match(/(\d+\.\d+[\d.]*)/);
+          return { projectId, versionId, versionNumber: m ? m[1] : versionId };
+        } catch { return null; }
+      };
+      const modKey = (entry: any): string => {
+        const url: string = (entry.downloads as string[] | undefined)?.[0] ?? '';
+        const parsed = url ? parseCdnUrl(url) : null;
+        return parsed ? parsed.projectId : path.basename(entry.path as string, '.jar');
+      };
 
-      // 8. Write modrinth.index.json
+      const prevModEntries = prevFiles.filter((f: any) => typeof f?.path === 'string' && (f.path as string).startsWith('mods/'));
+      const newModEntries = newFiles.filter((f: any) => typeof f?.path === 'string' && (f.path as string).startsWith('mods/'));
+      const prevModMap = new Map<string, any>(prevModEntries.map((f: any) => [modKey(f), f]));
+      const newModMap = new Map<string, any>(newModEntries.map((f: any) => [modKey(f), f]));
+
+      const modsAdded = newModEntries.filter((f: any) => !prevModMap.has(modKey(f))).length;
+
+      const removedMods: { slug: string; name: string; versionNumber: string | null; iconUrl: string | null }[] = [];
+      for (const [key, oldEntry] of prevModMap) {
+        if (newModMap.has(key)) continue; // still present under the same identity — not removed
+        const slug = path.basename(oldEntry.path as string, '.jar');
+        const sha: string = oldEntry.hashes?.sha512 ?? '';
+        const cached = sha ? cache[sha] : undefined;
+        const url: string = (oldEntry.downloads as string[] | undefined)?.[0] ?? '';
+        const parsed = url ? parseCdnUrl(url) : null;
+        removedMods.push({
+          slug,
+          name: cached?.title ?? slug,
+          versionNumber: parsed?.versionNumber ?? null,
+          iconUrl: cached?.iconUrl ?? null,
+        });
+      }
+      const modsRemoved = removedMods.length;
+
+      // 8. Write modrinth.index.json — built ONLY from newFiles (the current
+      //    mods/ scan from step 6). Deliberately never merged with prevFiles: a
+      //    mod deleted locally must disappear from the manifest, not be carried
+      //    forward and reappear the next time someone pulls.
       const manifest = {
         formatVersion: 1,
         game: 'minecraft',
@@ -1952,6 +2154,23 @@ function registerIpc() {
       sendProgress('overrides', 'Syncing override files…', 58);
       const overridesDir = path.join(versionsDir, 'overrides');
       const filesChanged = syncOverridesToRepo(root, overridesDir);
+
+      // 9b. Sweep the rest of versions-repo/overrides/ for anything that no longer
+      //     exists in the local modpack root. syncOverridesToRepo already handles
+      //     stale-file removal within OVERRIDE_FOLDERS/INCLUDE_FILES; this catches
+      //     anything outside that scope (stray files, legacy folders, etc.).
+      //     overrides/mods/ is excluded — it's cleaned up in step 6 above, keyed
+      //     off the same local jar identity used to build the manifest, not a
+      //     1:1 path mirror of modpack_root/mods/. Actual git removal happens via
+      //     the `git add -A` below, which stages deletions same as it stages edits.
+      for (const overrideFile of walkDir(overridesDir)) {
+        const relToOverrides = path.relative(overridesDir, overrideFile).replace(/\\/g, '/');
+        if (relToOverrides.startsWith('mods/')) continue;
+        const localFile = path.join(root, relToOverrides);
+        if (!fs.existsSync(localFile)) {
+          try { fs.unlinkSync(overrideFile); } catch {}
+        }
+      }
 
       // 10. Ensure .gitignore excludes local cache files, then stage everything
       ensureGitignore(versionsDir);
@@ -2186,7 +2405,7 @@ function registerIpc() {
         }
       })();
 
-      return { success: true, version: newVersion, modsAdded, modsRemoved, modsUnresolved, filesChanged };
+      return { success: true, version: newVersion, modsAdded, modsRemoved, removedMods, modsUnresolved, filesChanged };
     } catch (e: any) {
       return { success: false, error: e?.message ?? String(e) };
     }

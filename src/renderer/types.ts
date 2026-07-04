@@ -82,10 +82,16 @@ export interface Issue {
   labels: IssueLabel[];
 }
 
-export interface ModrinthProfile {
+export interface LauncherProfileEntry {
   name: string;
   path: string;
-  launcherPath: string;
+  modCount: number;
+}
+
+export interface LauncherProfileGroup {
+  launcher: string;
+  launcherIcon: string;
+  profiles: LauncherProfileEntry[];
 }
 
 export interface ModpackInfo {
@@ -140,6 +146,25 @@ export interface PullModUpdate {
 export interface PullFileChange {
   path: string;
   status: 'added' | 'modified' | 'removed';
+}
+
+export interface PushRemovedMod {
+  slug: string;
+  name: string;
+  versionNumber: string | null;
+  iconUrl: string | null;
+}
+
+export interface PushResult {
+  success: boolean;
+  version?: number;
+  modsAdded?: number;
+  modsRemoved?: number;
+  removedMods?: PushRemovedMod[];
+  modsUnresolved?: string[];
+  filesChanged?: number;
+  output?: string;
+  error?: string;
 }
 
 export interface PullResult {
@@ -264,7 +289,7 @@ declare global {
       git: {
         ensureVersionsRepo: () => Promise<{ success: boolean; error?: string }>;
         pull: () => Promise<PullResult>;
-        push: (o: { message: string }) => Promise<{ success: boolean; output?: string; error?: string }>;
+        push: (o: { message: string }) => Promise<PushResult>;
         status: () => Promise<{ success: boolean; data?: SyncStatus; error?: string }>;
         stagedFiles: () => Promise<{ success: boolean; data?: string[] }>;
         commitChanges: (sha: string) => Promise<{ success: boolean; data?: CommitChanges; error?: string }>;
@@ -289,7 +314,7 @@ declare global {
         detectRoot: () => Promise<{ success: boolean; path: string | null }>;
         deepScan: () => Promise<{ success: boolean; path: string | null; driveRoot: string | null; error?: string }>;
         abortScan: () => Promise<{ success: boolean }>;
-        listProfiles: () => Promise<{ success: boolean; data: ModrinthProfile[]; error?: string }>;
+        listProfiles: () => Promise<{ success: boolean; data: LauncherProfileGroup[]; error?: string }>;
         setRootFromProfile: (path: string) => Promise<{ success: boolean }>;
         setRoot: (p: string) => Promise<{ success: boolean }>;
         getRoot: () => Promise<{ success: boolean; path: string | null }>;

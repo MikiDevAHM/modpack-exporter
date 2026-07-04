@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { X, FolderOpen, Loader2, Github, Check, LogOut, AlertCircle, RefreshCw, Send } from 'lucide-react';
+import { X, FolderOpen, Loader2, Github, Check, LogOut, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { GitHubUser, ModrinthProfile } from '../types';
+import type { GitHubUser } from '../types';
+import ProfileSelector from './ProfileSelector';
 
 interface Props {
   /** When false, the X button and overlay-click dismiss are hidden (used for first-run / unauthenticated state). */
@@ -33,33 +34,7 @@ export default function SettingsModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [mouseDownTarget, setMouseDownTarget] = useState<EventTarget | null>(null);
-  const [scanningProfiles, setScanningProfiles] = useState(false);
-  const [profiles, setProfiles] = useState<ModrinthProfile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState('');
   const authenticated = !!user;
-
-  // ── Load settings + scan for Modrinth profiles on open ────────────────────
-  const loadProfiles = async (existingRoot?: string) => {
-    setScanningProfiles(true);
-    const result = await window.electron.modpack.listProfiles();
-    setScanningProfiles(false);
-    if (!result.success || result.data.length === 0) return;
-
-    setProfiles(result.data);
-
-    if (result.data.length === 1 && !existingRoot) {
-      // Single profile: auto-select and save
-      const p = result.data[0];
-      setSelectedProfile(p.path);
-      setModpackRoot(p.path);
-      await window.electron.modpack.setRootFromProfile(p.path);
-      toast.success(`Modrinth profile "${p.name}" detected automatically`);
-    } else {
-      // Pre-select whichever profile matches the current root (if any)
-      const match = result.data.find(p => p.path === existingRoot);
-      if (match) setSelectedProfile(match.path);
-    }
-  };
 
   useEffect(() => {
     (async () => {
@@ -68,7 +43,6 @@ export default function SettingsModal({
       if (all.modpackRoot) setModpackRoot(all.modpackRoot);
       if (all.discordWebhook) setDiscordWebhook(all.discordWebhook);
       if (all.modrinthProjectId) setModrinthProjectId(all.modrinthProjectId);
-      await loadProfiles(all.modpackRoot || undefined);
     })();
 
     // If the background startup scan finishes while the modal is open, reflect it
@@ -78,23 +52,13 @@ export default function SettingsModal({
     return () => window.electron.modpack.offRootFound();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Profile handlers ───────────────────────────────────────────────────────
-  const handleUseProfile = async () => {
-    if (!selectedProfile) return;
-    setModpackRoot(selectedProfile);
-    await window.electron.modpack.setRootFromProfile(selectedProfile);
-    const profile = profiles.find(p => p.path === selectedProfile);
-    toast.success(`Profile "${profile?.name ?? selectedProfile}" selected`);
+  // ── Profile selection ──────────────────────────────────────────────────────
+  const handleProfileSelected = (path: string, profileName?: string) => {
+    setModpackRoot(path);
+    toast.success(profileName ? `Profile "${profileName}" selected` : `Modpack root set to ${path}`);
   };
-
-  const handleRescan = () => loadProfiles(modpackRoot || undefined);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-  const selectModpackRoot = async () => {
-    const dir = await window.electron.app.selectDirectory();
-    if (dir) setModpackRoot(dir);
-  };
-
   const selectExportDir = async () => {
     const dir = await window.electron.app.selectDirectory();
     if (dir) setExportDir(dir);
@@ -219,91 +183,14 @@ export default function SettingsModal({
 
           {/* Modpack root */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className={labelClass} style={{ marginBottom: 0 }}>
-                Modpack Root Directory <span className="text-[#E24729]">*</span>
-              </label>
-              <button
-                onClick={handleRescan}
-                disabled={scanningProfiles}
-                className="flex items-center gap-1 text-xs text-[#A9A9AB] hover:text-white transition-colors disabled:opacity-40"
-                title="Re-scan all drives"
-              >
-                <RefreshCw size={11} className={scanningProfiles ? 'animate-spin' : ''} />
-                {scanningProfiles ? 'Scanning…' : 'Rescan'}
-              </button>
-            </div>
+            <label className={labelClass}>
+              Modpack Root Directory <span className="text-[#E24729]">*</span>
+            </label>
             <p className="text-[#A9A9AB] text-xs mb-2">
-              Your Modrinth instance folder (must contain a <code className="bg-white/10 px-1 rounded">mods/</code> subfolder).
+              Detected from every major launcher on this machine (must contain a{' '}
+              <code className="bg-white/10 px-1 rounded">mods/</code> subfolder), or pick one manually.
             </p>
-
-            {/* Profile dropdown or status */}
-            {scanningProfiles ? (
-              <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-[8px] text-xs" style={{ background: 'rgba(8,144,254,0.12)', color: '#0890FE' }}>
-                <Loader2 size={12} className="animate-spin flex-shrink-0" />
-                Scanning all drives for Modrinth profiles…
-              </div>
-            ) : profiles.length > 0 ? (
-              <div className="mb-2 flex gap-2">
-                <select
-                  value={selectedProfile}
-                  onChange={e => setSelectedProfile(e.target.value)}
-                  className="flex-1 rounded-[8px] px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#0890FE] transition-all appearance-none"
-                  style={{ background: '#1E1E1E', border: '1px solid rgba(255,255,255,0.08)' }}
-                >
-                  {profiles.length > 1 && <option value="">Select a Modrinth profile…</option>}
-                  {profiles.map(p => (
-                    <option key={p.path} value={p.path} title={p.path}>
-                      {p.name}  —  {p.launcherPath}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleUseProfile}
-                  disabled={!selectedProfile}
-                  className="px-3 py-2 rounded-[8px] text-white text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                  style={{ background: '#20AC64' }}
-                  onMouseEnter={e => { if (selectedProfile) (e.currentTarget as HTMLButtonElement).style.background = '#25bd72'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#20AC64'; }}
-                >
-                  Use
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-[8px] text-xs" style={{ background: 'rgba(255,168,9,0.12)', color: '#FFA809' }}>
-                <AlertCircle size={12} className="flex-shrink-0" />
-                No Modrinth profiles found on any drive. Browse manually below.
-              </div>
-            )}
-
-            {/* Confirmed selection badge */}
-            {!scanningProfiles && modpackRoot && selectedProfile === modpackRoot && (
-              <div className="flex items-center gap-1.5 mb-2 text-xs" style={{ color: '#20AC64' }}>
-                <Check size={11} />
-                <span className="truncate">{modpackRoot}</span>
-              </div>
-            )}
-
-            {/* Manual path input + browse */}
-            <div className="flex gap-2">
-              <input
-                value={modpackRoot}
-                onChange={e => setModpackRoot(e.target.value)}
-                placeholder="C:\Users\you\AppData\Roaming\ModrinthApp\profiles\ORB"
-                className={`${inputClass} flex-1`}
-                style={inputStyle}
-              />
-              <button
-                onClick={selectModpackRoot}
-                disabled={scanningProfiles}
-                className="px-3 py-2 rounded-[8px] hover:bg-white/10 transition-colors disabled:opacity-40"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-                aria-label="Browse for modpack root"
-                title="Browse for modpack root"
-              >
-                <FolderOpen size={15} className="text-[#A9A9AB]" />
-              </button>
-            </div>
+            <ProfileSelector selectedPath={modpackRoot} onSelected={handleProfileSelected} />
           </div>
 
           {/* Export dir */}
