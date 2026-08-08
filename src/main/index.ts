@@ -1272,6 +1272,11 @@ function registerIpc() {
     store.set('readOnlyMode', enabled);
   });
 
+  ipcMain.handle('settings:get-auto-sync', () => store.get('autoSyncOnLaunch'));
+  ipcMain.handle('settings:set-auto-sync', (_e, { enabled }: { enabled: boolean }) => {
+    store.set('autoSyncOnLaunch', enabled);
+  });
+
   // Config
   ipcMain.handle('config:read', () => {
     try {
@@ -1554,12 +1559,16 @@ function registerIpc() {
       const newPullStateFiles: Record<string, string> = {};
 
       // First-pull detection: `.last_pull_state.json` is only written after a pull
-      // completes successfully, so its absence is the most reliable signal that this
-      // install has never synced before — including the case where the versions repo
-      // already exists locally (e.g. cloned earlier by a push) but nothing has ever
-      // actually been pulled down onto this machine.
+      // completes successfully, so its absence is normally a reliable signal that this
+      // install has never synced before. But that file can also be missing because it
+      // was deleted or got corrupted on an install that HAS synced before — treating
+      // that as a first pull would wipe out an already-populated mods/ folder and every
+      // override folder. So a launch only counts as a first pull if BOTH the state file
+      // is missing AND the local mods/ folder has zero jars in it; any jar already on
+      // disk is proof this install has synced before, regardless of the state file.
       const pullStatePath = path.join(versionsDir, '.last_pull_state.json');
-      const isFirstPull = !fs.existsSync(pullStatePath);
+      const hasLocalModJars = fs.existsSync(modsDir) && fs.readdirSync(modsDir).some(f => f.endsWith('.jar'));
+      const isFirstPull = !fs.existsSync(pullStatePath) && !hasLocalModJars;
 
       // 4. Build manifest lookup and inventory local mods
       fs.mkdirSync(modsDir, { recursive: true });
@@ -1578,8 +1587,58 @@ function registerIpc() {
       const errors: string[] = [];
       const changedFiles: { path: string; status: 'added' | 'modified' | 'removed' }[] = [];
       const downloadedJars = new Set<string>(); // basenames actually installed this pull
-      const deletedJars = new Set<string>();    // basenames deleted (stale, not in manifest)
+      const deletedJars = new Set<string>();    // basenames deleted (stale or duplicate, not in manifest)
       const preservedMods: string[] = [];
+
+      // Reduce a mod jar's filename to a rough "slug" for duplicate detection by
+      // stripping the trailing version string, e.g. "sodium-fabric-0.8.11.jar" and
+      // "sodium-fabric-0.7.0.jar" both reduce to "sodium-fabric". This is a filename
+      // heuristic (not a real Modrinth slug) — it only needs to be consistent enough
+      // to recognize two jars on disk as "the same mod, different version".
+      const stripVersionSlug = (filename: string): string => {
+        const base = path.basename(filename, '.jar');
+        const m = base.match(/^(.+?)[-_]v?\d+(?:\.\d+)*.*$/i);
+        return (m ? m[1] : base).toLowerCase();
+      };
+
+      // Before writing a downloaded/copied jar under `basename`, delete anything
+      // already in mods/ that would become a duplicate of it: the exact same
+      // filename (so we overwrite rather than leave a stale copy behind), and any
+      // other jar that resolves to the same slug under a different filename/version
+      // (e.g. an old sodium-0.7.0.jar sitting next to the sodium-0.8.11.jar we're
+      // about to write). Keeps mods/ from accumulating multiple jars for one mod.
+      const removeConflictingJars = (basename: string, localJarSet?: Set<string>) => {
+        const targetPath = path.join(modsDir, basename);
+        if (fs.existsSync(targetPath)) {
+          try { fs.unlinkSync(targetPath); } catch {}
+        }
+        localJarSet?.delete(basename);
+
+        const targetSlug = stripVersionSlug(basename);
+        let currentJars: string[] = [];
+        try { currentJars = fs.readdirSync(modsDir).filter(f => f.endsWith('.jar')); } catch {}
+        for (const jar of currentJars) {
+          if (jar === basename) continue;
+          if (stripVersionSlug(jar) !== targetSlug) continue;
+          try {
+            fs.unlinkSync(path.join(modsDir, jar));
+            deletedJars.add(jar);
+            localJarSet?.delete(jar);
+            console.log(`[git:pull] removed duplicate jar for slug "${targetSlug}": ${jar}`);
+          } catch {}
+        }
+      };
+
+      // Find a local jar matching `basename` either exactly or by slug — i.e. the
+      // same mod already installed locally under an older/different filename.
+      const findLocalJarBySlug = (basename: string, jars: Set<string>): string | undefined => {
+        if (jars.has(basename)) return basename;
+        const targetSlug = stripVersionSlug(basename);
+        for (const jar of jars) {
+          if (stripVersionSlug(jar) === targetSlug) return jar;
+        }
+        return undefined;
+      };
 
       if (isFirstPull) {
         // ── Clean install ────────────────────────────────────────────────────────
@@ -1621,6 +1680,7 @@ function registerIpc() {
             const localPath = path.join(modsDir, basename);
             sendProgress('mods', `Installing local mod: ${basename}`, percent);
             if (fs.existsSync(overrideJar)) {
+              removeConflictingJars(basename);
               fs.copyFileSync(overrideJar, localPath);
               modsDownloaded++;
               downloadedJars.add(basename);
@@ -1644,7 +1704,9 @@ function registerIpc() {
           try {
             const resp = await fetch(downloadUrl, { headers: { 'User-Agent': 'ORB-Modpack-Exporter/1.0' } });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            fs.writeFileSync(localPath, Buffer.from(await resp.arrayBuffer()));
+            const data = Buffer.from(await resp.arrayBuffer());
+            removeConflictingJars(basename);
+            fs.writeFileSync(localPath, data);
             modsDownloaded++;
             downloadedJars.add(basename);
           } catch (dlErr: any) {
@@ -1709,16 +1771,29 @@ function registerIpc() {
 
             sendProgress('mods', `Checking local mod: ${basename}`, percent);
 
-            let needsCopy = !localJars.has(basename);
-            if (!needsCopy && expectedSha512) {
-              try { needsCopy = computeSha512(localPath) !== expectedSha512; } catch { needsCopy = true; }
+            // Match by slug, not just exact filename — the same mod may already be
+            // installed locally under an older/different filename/version.
+            const matchingJar = findLocalJarBySlug(basename, localJars);
+            let needsCopy: boolean;
+            if (!matchingJar) {
+              needsCopy = true;
+            } else if (expectedSha512) {
+              try { needsCopy = computeSha512(path.join(modsDir, matchingJar)) !== expectedSha512; }
+              catch { needsCopy = true; }
+            } else {
+              needsCopy = matchingJar !== basename;
             }
 
             if (needsCopy) {
               if (fs.existsSync(overrideJar)) {
+                // Delete the stale copy (same filename, or same slug under a
+                // different filename) before writing the fresh one, so mods/ never
+                // ends up with two jars for the same mod.
+                removeConflictingJars(basename, localJars);
                 fs.copyFileSync(overrideJar, localPath);
                 modsDownloaded++;
                 downloadedJars.add(basename);
+                localJars.add(basename);
               } else {
                 modsSkipped.push(basename);
                 errors.push(`Local mod missing from overrides: ${basename}`);
@@ -1727,13 +1802,23 @@ function registerIpc() {
             continue;
           }
 
-          // Modrinth mod — download if missing or hash differs
+          // Modrinth mod — download if missing, hash differs, or only present locally
+          // under a different filename for the same mod (matched by slug). If a local
+          // jar's hash already matches the manifest's, it's in sync — skip it even if
+          // the filename differs, so an auto-sync on launch never re-downloads/duplicates
+          // a mod the maintainer already has installed.
           const localPath = path.join(modsDir, basename);
           const expectedSha512: string | undefined = entry.hashes?.sha512;
 
-          let needsDownload = !localJars.has(basename);
-          if (!needsDownload && expectedSha512) {
-            try { needsDownload = computeSha512(localPath) !== expectedSha512; } catch { needsDownload = true; }
+          const matchingJar = findLocalJarBySlug(basename, localJars);
+          let needsDownload: boolean;
+          if (!matchingJar) {
+            needsDownload = true;
+          } else if (expectedSha512) {
+            try { needsDownload = computeSha512(path.join(modsDir, matchingJar)) !== expectedSha512; }
+            catch { needsDownload = true; }
+          } else {
+            needsDownload = matchingJar !== basename;
           }
 
           if (!needsDownload) {
@@ -1753,9 +1838,15 @@ function registerIpc() {
           try {
             const resp = await fetch(downloadUrl, { headers: { 'User-Agent': 'ORB-Modpack-Exporter/1.0' } });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            fs.writeFileSync(localPath, Buffer.from(await resp.arrayBuffer()));
+            const data = Buffer.from(await resp.arrayBuffer());
+            // The manifest version is authoritative — delete whatever's there for
+            // this mod (same filename, or same slug under an older version/filename)
+            // before writing the fresh download.
+            removeConflictingJars(basename, localJars);
+            fs.writeFileSync(localPath, data);
             modsDownloaded++;
             downloadedJars.add(basename);
+            localJars.add(basename);
           } catch (dlErr: any) {
             modsSkipped.push(basename);
             errors.push(`Download failed for ${basename}: ${dlErr.message}`);
@@ -1766,9 +1857,12 @@ function registerIpc() {
         // 6. Remove local jars not in the manifest
         //    Smart merge: a stale jar that is locally-added (un-pushed work) is kept,
         //    not deleted. Only jars that were previously synced and have since been
-        //    removed remotely are deleted here.
+        //    removed remotely are deleted here. Re-read mods/ from disk rather than
+        //    reusing the in-memory `localJars` set, since the download loop above may
+        //    have already deleted duplicate/stale jars as part of the dedup fix.
         sendProgress('mods', 'Removing stale mods…', 57);
-        for (const localJar of localJars) {
+        const currentLocalJars = fs.readdirSync(modsDir).filter(f => f.endsWith('.jar'));
+        for (const localJar of currentLocalJars) {
           if (manifestByBasename.has(localJar)) continue;
           const slug = path.basename(localJar, '.jar');
           if (locallyAddedSlugs.has(slug)) {
@@ -1822,6 +1916,46 @@ function registerIpc() {
                 filesSkipped.push(stateKey);
                 console.warn(`[pull] locally-modified file skipped: ${stateKey}`);
               }
+            }
+          }
+        }
+      }
+
+      // ── Final duplicate sweep ─────────────────────────────────────────────────
+      // Safety net on top of the per-mod dedup above: scan mods/ for any jars that
+      // still resolve to the same slug (e.g. leftovers from before this fix existed,
+      // or two manifest entries that happen to collide) and keep only the one whose
+      // SHA512 matches the manifest, deleting the rest.
+      sendProgress('mods', 'Checking for duplicate mods…', 59);
+      {
+        const expectedShaBySlug = new Map<string, string>();
+        for (const [entryBasename, entry] of manifestByBasename.entries()) {
+          const sha512: string | undefined = entry.hashes?.sha512;
+          if (sha512) expectedShaBySlug.set(stripVersionSlug(entryBasename), sha512);
+        }
+
+        const jarsBySlug = new Map<string, string[]>();
+        for (const jar of fs.readdirSync(modsDir).filter(f => f.endsWith('.jar'))) {
+          const slug = stripVersionSlug(jar);
+          const list = jarsBySlug.get(slug) ?? [];
+          list.push(jar);
+          jarsBySlug.set(slug, list);
+        }
+
+        for (const [slug, jars] of jarsBySlug) {
+          if (jars.length < 2) continue;
+          const expectedSha512 = expectedShaBySlug.get(slug);
+          if (!expectedSha512) continue; // no manifest reference to arbitrate — leave both in place
+
+          for (const jar of jars) {
+            let matches = false;
+            try { matches = computeSha512(path.join(modsDir, jar)) === expectedSha512; } catch {}
+            if (!matches) {
+              try {
+                fs.unlinkSync(path.join(modsDir, jar));
+                deletedJars.add(jar);
+                console.log(`[git:pull] duplicate sweep removed stale jar for slug "${slug}": ${jar}`);
+              } catch {}
             }
           }
         }

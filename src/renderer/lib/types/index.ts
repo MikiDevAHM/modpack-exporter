@@ -301,6 +301,8 @@ declare global {
         testWebhook: (url: string) => Promise<{ success: boolean; error?: string }>;
         getReadOnly: () => Promise<boolean>;
         setReadOnly: (enabled: boolean) => Promise<void>;
+        getAutoSyncOnLaunch: () => Promise<boolean>;
+        setAutoSyncOnLaunch: (enabled: boolean) => Promise<void>;
       };
       config: {
         read: () => Promise<{ success: boolean; data?: AppConfig; error?: string }>;

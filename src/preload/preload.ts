@@ -40,6 +40,8 @@ const api = {
     testWebhook: (url: string) => ipcRenderer.invoke('settings:test-webhook', { url }),
     getReadOnly: () => ipcRenderer.invoke('settings:get-read-only'),
     setReadOnly: (enabled: boolean) => ipcRenderer.invoke('settings:set-read-only', { enabled }),
+    getAutoSyncOnLaunch: () => ipcRenderer.invoke('settings:get-auto-sync'),
+    setAutoSyncOnLaunch: (enabled: boolean) => ipcRenderer.invoke('settings:set-auto-sync', { enabled }),
   },
   config: {
     read: () => ipcRenderer.invoke('config:read'),

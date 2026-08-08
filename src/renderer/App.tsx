@@ -372,7 +372,12 @@ export default function App() {
       return;
     }
 
-    // Auto-sync on launch — same handler as manual pull, with index.lock retry
+    // Auto-sync on launch — opt-in (defaults off) since it can silently overwrite
+    // local changes the user hasn't pushed yet. When disabled, the user must click
+    // "Pull Latest" manually. Same handler as manual pull, with index.lock retry.
+    const autoSyncEnabled = await window.electron.settings.getAutoSyncOnLaunch();
+    if (!autoSyncEnabled) return;
+
     void (async () => {
       setIsAutoSyncing(true);
       try {

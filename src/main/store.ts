@@ -18,6 +18,9 @@ export interface StoreSchema {
   modrinthPath: string;
   /** When true, push and pull operations are blocked to prevent accidental profile changes. */
   readOnlyMode: boolean;
+  /** When true, a pull runs automatically after login on every launch. Defaults to false
+   *  (opt-in) since auto-sync can silently overwrite local changes the user hasn't pushed yet. */
+  autoSyncOnLaunch: boolean;
 }
 
 export const store = new Store<StoreSchema>({
@@ -33,5 +36,6 @@ export const store = new Store<StoreSchema>({
     initialSetupComplete: '',
     modrinthPath: '',
     readOnlyMode: false,
+    autoSyncOnLaunch: false,
   },
 });

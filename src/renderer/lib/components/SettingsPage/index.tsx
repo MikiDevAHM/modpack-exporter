@@ -20,6 +20,7 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [readOnlyEnabled, setReadOnlyEnabled] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
   const [profileMode, setProfileMode] = useState<ProfileMode>('dev');
   const [lastSnapshotTime, setLastSnapshotTime] = useState<string | null>(null);
   const [isSnapshotting, setIsSnapshotting] = useState(false);
@@ -38,6 +39,7 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
     setModrinthProjectId(getCachedSetting('modrinthProjectId') || 'O5wGsyGR');
 
     window.electron.settings.getReadOnly().then(setReadOnlyEnabled);
+    window.electron.settings.getAutoSyncOnLaunch().then(setAutoSyncEnabled);
     window.electron.profile.getMode().then(setProfileMode);
     window.electron.profile.listSnapshots().then(r => {
       if (r.success && r.data && r.data.length > 0) {
@@ -61,6 +63,13 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
     setReadOnlyEnabled(next);
     await window.electron.settings.setReadOnly(next);
     toast(next ? 'Read-only mode enabled' : 'Read-only mode disabled');
+  };
+
+  const handleAutoSyncToggle = async () => {
+    const next = !autoSyncEnabled;
+    setAutoSyncEnabled(next);
+    await window.electron.settings.setAutoSyncOnLaunch(next);
+    toast(next ? 'Auto-sync on launch enabled' : 'Auto-sync on launch disabled');
   };
 
   const handleTakeSnapshot = async () => {
@@ -259,6 +268,43 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
                 />
               </div>
               {readOnlyEnabled ? 'Read-only is ON' : 'Read-only is OFF'}
+            </button>
+          </div>
+
+          <div className="h-px bg-white/[0.06]" />
+
+          {/* Auto-sync on launch */}
+          <div>
+            <label className={labelClass}>
+              Auto-sync on Launch <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            </label>
+            <p className="text-[#A9A9AB] text-xs mb-2">
+              When enabled, the app automatically pulls the latest modpack after you log in.
+              Off by default — auto-sync can overwrite local changes you haven't pushed yet,
+              so use <span className="text-white/80">Pull Latest</span> manually unless you're sure.
+            </p>
+            <button
+              onClick={handleAutoSyncToggle}
+              className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
+                autoSyncEnabled ? 'text-[#20AC64]' : 'text-[#A9A9AB]'
+              }`}
+              style={{
+                background: autoSyncEnabled ? 'rgba(32,172,100,0.1)' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${autoSyncEnabled ? 'rgba(32,172,100,0.35)' : 'rgba(255,255,255,0.08)'}`,
+              }}
+            >
+              <div
+                className="w-8 h-4 rounded-full transition-colors relative"
+                style={{
+                  background: autoSyncEnabled ? '#20AC64' : 'rgba(255,255,255,0.15)',
+                }}
+              >
+                <div
+                  className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all shadow-sm"
+                  style={{ left: autoSyncEnabled ? '18px' : '3px' }}
+                />
+              </div>
+              {autoSyncEnabled ? 'Auto-sync is ON' : 'Auto-sync is OFF'}
             </button>
           </div>
 
