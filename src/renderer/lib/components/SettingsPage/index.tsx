@@ -16,6 +16,8 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
   const [exportDir, setExportDir] = useState('');
   const [discordWebhook, setDiscordWebhook] = useState('');
   const [modrinthProjectId, setModrinthProjectId] = useState('O5wGsyGR');
+  const [minecraftVersion, setMinecraftVersion] = useState('1.21.1');
+  const [fabricLoaderVersion, setFabricLoaderVersion] = useState('0.16.9');
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -37,6 +39,8 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
     setExportDir(getCachedSetting('exportDir'));
     setDiscordWebhook(getCachedSetting('discordWebhook'));
     setModrinthProjectId(getCachedSetting('modrinthProjectId') || 'O5wGsyGR');
+    setMinecraftVersion(getCachedSetting('minecraftVersion') || '1.21.1');
+    setFabricLoaderVersion(getCachedSetting('fabricLoaderVersion') || '0.16.9');
 
     window.electron.settings.getReadOnly().then(setReadOnlyEnabled);
     window.electron.settings.getAutoSyncOnLaunch().then(setAutoSyncEnabled);
@@ -153,6 +157,8 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
       setCachedSetting('exportDir', exportDir.trim()),
       setCachedSetting('discordWebhook', discordWebhook.trim()),
       setCachedSetting('modrinthProjectId', modrinthProjectId.trim() || 'O5wGsyGR'),
+      setCachedSetting('minecraftVersion', minecraftVersion.trim() || '1.21.1'),
+      setCachedSetting('fabricLoaderVersion', fabricLoaderVersion.trim() || '0.16.9'),
     ]);
     setIsSaving(false);
     setHasChanges(false);
@@ -417,6 +423,44 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
               style={inputStyle}
               spellCheck={false}
             />
+          </div>
+
+          <div className="h-px bg-white/[0.06]" />
+
+          {/* Minecraft / Fabric Loader versions */}
+          <div>
+            <label className={labelClass}>
+              Minecraft &amp; Fabric Loader Versions
+            </label>
+            <p className="text-[#A9A9AB] text-xs mb-2">
+              Written to the exported <code className="bg-white/10 px-1 rounded">modrinth.index.json</code>'s{' '}
+              <code className="bg-white/10 px-1 rounded">dependencies</code> field, required by the Modrinth App.
+              Update these when the modpack upgrades Minecraft or Fabric.
+            </p>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-[#A9A9AB] text-[11px] mb-1 block">Minecraft version</label>
+                <input
+                  value={minecraftVersion}
+                  onChange={e => { setMinecraftVersion(e.target.value); setHasChanges(true); }}
+                  placeholder="1.21.1"
+                  className={inputClass}
+                  style={inputStyle}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[#A9A9AB] text-[11px] mb-1 block">Fabric Loader version</label>
+                <input
+                  value={fabricLoaderVersion}
+                  onChange={e => { setFabricLoaderVersion(e.target.value); setHasChanges(true); }}
+                  placeholder="0.16.9"
+                  className={inputClass}
+                  style={inputStyle}
+                  spellCheck={false}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>

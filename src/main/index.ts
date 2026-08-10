@@ -2273,6 +2273,10 @@ function registerIpc() {
         game: 'minecraft',
         versionId: String(newVersion),
         name: packName,
+        dependencies: {
+          minecraft: store.get('minecraftVersion') || '1.21.1',
+          'fabric-loader': store.get('fabricLoaderVersion') || '0.16.9',
+        },
         files: newFiles,
       };
 
@@ -3633,6 +3637,10 @@ function registerIpc() {
     const exportManifest = {
       ...manifest,
       versionId: version,
+      dependencies: manifest.dependencies ?? {
+        minecraft: store.get('minecraftVersion') || '1.21.1',
+        'fabric-loader': store.get('fabricLoaderVersion') || '0.16.9',
+      },
       files: manifest.files.map(({ source: _s, ...rest }: any) => rest),
     };
 

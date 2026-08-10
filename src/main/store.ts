@@ -21,6 +21,10 @@ export interface StoreSchema {
   /** When true, a pull runs automatically after login on every launch. Defaults to false
    *  (opt-in) since auto-sync can silently overwrite local changes the user hasn't pushed yet. */
   autoSyncOnLaunch: boolean;
+  /** Minecraft version written to modrinth.index.json's "dependencies" field. */
+  minecraftVersion: string;
+  /** Fabric Loader version written to modrinth.index.json's "dependencies" field. */
+  fabricLoaderVersion: string;
 }
 
 export const store = new Store<StoreSchema>({
@@ -37,5 +41,7 @@ export const store = new Store<StoreSchema>({
     modrinthPath: '',
     readOnlyMode: false,
     autoSyncOnLaunch: false,
+    minecraftVersion: '1.21.1',
+    fabricLoaderVersion: '0.16.9',
   },
 });

@@ -4,6 +4,8 @@ interface SettingsMap {
   modpackRoot: string;
   exportDir: string;
   readOnlyMode: string;
+  minecraftVersion: string;
+  fabricLoaderVersion: string;
   [key: string]: string;
 }
 
@@ -13,6 +15,8 @@ let cache: SettingsMap = {
   modpackRoot: '',
   exportDir: '',
   readOnlyMode: '',
+  minecraftVersion: '1.21.1',
+  fabricLoaderVersion: '0.16.9',
 };
 let ready = false;
 
