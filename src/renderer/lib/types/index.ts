@@ -155,6 +155,13 @@ export interface PushRemovedMod {
   iconUrl: string | null;
 }
 
+export interface PushedCommit {
+  sha: string;
+  message: string;
+  author: { name: string; email: string };
+  timestamp: string;
+}
+
 export interface PushResult {
   success: boolean;
   version?: number;
@@ -163,6 +170,7 @@ export interface PushResult {
   removedMods?: PushRemovedMod[];
   modsUnresolved?: string[];
   filesChanged?: number;
+  commit?: PushedCommit;
   output?: string;
   error?: string;
 }

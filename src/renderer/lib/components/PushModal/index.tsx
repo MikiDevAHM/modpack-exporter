@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, ChevronRight, Loader2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { PushPreviewMod, PushPreviewResult, PushPreviewUpdate } from '../../types';
+import type { PushedCommit, PushPreviewMod, PushPreviewResult, PushPreviewUpdate } from '../../types';
 
 interface Props {
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (commit?: PushedCommit) => void;
 }
 
 type Phase = 'idle' | 'confirming' | 'pushing' | 'success' | 'error';
@@ -154,6 +154,7 @@ export default function PushModal({ onClose, onSuccess }: Props) {
 
   const setProgressRef = useRef(setProgress);
   setProgressRef.current = setProgress;
+  const pushedCommitRef = useRef<PushedCommit | undefined>(undefined);
 
   // Load preview on mount
   useEffect(() => {
@@ -169,7 +170,7 @@ export default function PushModal({ onClose, onSuccess }: Props) {
     setCountdown(2);
     const interval = setInterval(() => {
       setCountdown(c => {
-        if (c <= 1) { clearInterval(interval); onSuccess(); return 0; }
+        if (c <= 1) { clearInterval(interval); onSuccess(pushedCommitRef.current); return 0; }
         return c - 1;
       });
     }, 1000);
@@ -191,6 +192,7 @@ export default function PushModal({ onClose, onSuccess }: Props) {
     try {
       const r = await window.electron.git.push({ message: commitMessage.trim() });
       if (r.success) {
+        pushedCommitRef.current = r.commit;
         setProgress({ percent: 100, message: 'Push complete!', stage: 'done' });
         setPhase('success');
         toast.success('Changes pushed successfully');
@@ -543,7 +545,7 @@ export default function PushModal({ onClose, onSuccess }: Props) {
 
           {phase === 'success' && (
             <button
-              onClick={onSuccess}
+              onClick={() => onSuccess(pushedCommitRef.current)}
               className="px-4 py-2 rounded-[8px] text-sm font-medium transition-colors"
               style={{ color: COLORS.success }}
               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(63,185,80,0.08)')}

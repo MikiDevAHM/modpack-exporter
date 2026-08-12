@@ -29,6 +29,7 @@ import type {
   Issue,
   ModChange,
   PullResult,
+  PushedCommit,
   SyncStatus,
 } from '@/lib/types';
 
@@ -510,14 +511,58 @@ export default function App() {
     }
   };
 
-  const handlePushSuccess = async () => {
+  const handlePushSuccess = async (commit?: PushedCommit) => {
     setShowPush(false);
+
+    // Show the just-pushed commit immediately — we already have its sha/message/
+    // author/timestamp from git:push, so there's no need to wait on GitHub's API,
+    // which can lag a moment behind a commit that was just pushed.
+    let optimisticCard: CommitCard | null = null;
+    if (commit && config) {
+      const parsed = parseRepoUrl(config.github_repo);
+      if (parsed) {
+        optimisticCard = {
+          sha: commit.sha,
+          message: commit.message.split('\n')[0],
+          author: {
+            login: commit.author.name,
+            avatar_url: `https://github.com/${commit.author.name}.png`,
+            html_url: `https://github.com/${commit.author.name}`,
+          },
+          date: commit.timestamp,
+          url: `https://github.com/${parsed.owner}/${parsed.repo}/commit/${commit.sha}`,
+          modChanges: [],
+          configChanged: false,
+          files: [],
+          detailsLoaded: false,
+        };
+        const card = optimisticCard;
+        setCommits(prev => (prev.some(c => c.sha === card.sha) ? prev : [card, ...prev]));
+        lastCommitShaRef.current = card.sha;
+      }
+    }
+
     const [mvRes] = await Promise.all([
       window.electron.export.manifestVersion(),
       loadGitStatus(),
-      ...(config ? [loadCommits(config)] : []),
     ]);
     if (mvRes.success) setManifestVersion(mvRes.versionId);
+
+    // Reconcile with GitHub shortly after — replaces the optimistic card with the
+    // authoritative one (full details: files, mod changes) once the API catches up.
+    if (config) {
+      const card = optimisticCard;
+      setTimeout(() => {
+        loadCommits(config).then(refreshed => {
+          if (refreshed.length > 0) lastCommitShaRef.current = refreshed[0].sha;
+          // GitHub's API hasn't caught up yet — put the optimistic card back so
+          // the just-pushed commit doesn't appear to vanish from the feed.
+          if (card && !refreshed.some(c => c.sha === card.sha)) {
+            setCommits(prev => (prev.some(c => c.sha === card.sha) ? prev : [card, ...prev]));
+          }
+        });
+      }, 500);
+    }
   };
 
   const handleExportSuccess = async () => {

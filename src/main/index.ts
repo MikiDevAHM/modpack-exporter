@@ -2313,13 +2313,19 @@ function registerIpc() {
       ensureGitignore(versionsDir);
 
       sendProgress('git', 'Committing changes…', 80);
-      await gitProvider.addAll(versionsDir);
 
+      // Snapshot HEAD vs working-tree BEFORE staging — `stage` reflects the index,
+      // which addAll() below sets to 1 (≠0) for every untouched tracked file too,
+      // so comparing post-add stage against 0 flagged nearly every push as "has
+      // changes" even when nothing differed from HEAD. head vs workdir is the
+      // actual signal.
       let hasChanges = false;
       try {
         const matrix = await gitProvider.statusMatrix(versionsDir);
-        hasChanges = matrix.some(r => r.stage !== 0);
+        hasChanges = matrix.some(r => r.head !== r.workdir);
       } catch {}
+
+      await gitProvider.addAll(versionsDir);
 
       if (hasChanges) {
         await gitProvider.commit(versionsDir, message || `Modpack push v${newVersion}`);
@@ -2338,6 +2344,22 @@ function registerIpc() {
       }
 
       sendProgress('done', 'Push complete!', 100);
+
+      // Commit details for the caller — lets the renderer show the pushed commit
+      // in the activity feed immediately instead of waiting on a GitHub API
+      // refetch (which can lag a moment behind a just-pushed commit).
+      let pushedCommit: { sha: string; message: string; author: { name: string; email: string }; timestamp: string } | undefined;
+      try {
+        const [latest] = await gitProvider.log(versionsDir, { depth: 1 });
+        if (latest) {
+          pushedCommit = {
+            sha: latest.oid,
+            message: latest.message,
+            author: { name: latest.author.name, email: latest.author.email },
+            timestamp: new Date(latest.author.timestamp * 1000).toISOString(),
+          };
+        }
+      } catch {}
 
       // Fire-and-forget Discord notification — Modrinth-style mod cards (one embed per mod)
       void (async () => {
@@ -2543,7 +2565,7 @@ function registerIpc() {
         }
       })();
 
-      return { success: true, version: newVersion, modsAdded, modsRemoved, removedMods, modsUnresolved, filesChanged };
+      return { success: true, version: newVersion, modsAdded, modsRemoved, removedMods, modsUnresolved, filesChanged, commit: pushedCommit };
     } catch (e: any) {
       return { success: false, error: e?.message ?? String(e) };
     }
