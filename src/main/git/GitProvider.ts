@@ -59,6 +59,7 @@ export interface GitProvider {
   readBlob(dir: string, oid: string, filepath: string): Promise<Uint8Array>;
   getCommitTreeDiff(dir: string, oid: string): Promise<TreeEntry[]>;
   diffRefs(dir: string, ref1: string, ref2: string, pathPrefix?: string): Promise<string[]>;
+  diffLastCommit(dir: string, pathPrefix?: string): Promise<string[]>;
   revertLastCommit(dir: string): Promise<string>;
   resetHard(dir: string, ref: string): Promise<void>;
   setRemoteUrl(dir: string, remote: string, url: string): Promise<void>;

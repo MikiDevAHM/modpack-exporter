@@ -7,10 +7,15 @@ import {
   FolderOpen,
   Package,
   RotateCcw,
-  X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { AppConfig, ChangelogDiff, ChangelogResult } from '../../types';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../base/Modal';
+import Button from '../base/Button';
+import Input, { LABEL_CLASSES } from '../base/Input';
+import Textarea from '../base/Textarea';
+import ProgressBar from '../base/ProgressBar';
+import { bumpPatch, formatSize } from '../../utils/format';
 
 interface Props {
   config: AppConfig;
@@ -26,72 +31,28 @@ interface ProgressState {
   percent: number;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const COLORS = {
-  bg:          '#0d1117',
-  surface:     '#161b22',
-  border:      'rgba(255,255,255,0.08)',
-  divider:     'rgba(255,255,255,0.06)',
-  muted:       '#8b949e',
-  text:        '#c9d1d9',
-  accent:      '#58a6ff',
-  success:     '#3fb950',
-  error:       '#f85149',
-  warn:        '#e3b341',
-  barBg:       '#21262d',
-  green:       '#20AC64',
-  red:         '#E24729',
-  yellow:      '#FFA809',
-  btnBlue:     '#1f6feb',
-  btnBluH:     '#388bfd',
-} as const;
-
 const FILE_COLLAPSE_LIMIT = 5;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function bumpPatch(version: string): string {
-  const parts = version.replace(/-.*$/, '').split('.');
-  if (parts.length >= 3) { parts[2] = String(Number(parts[2]) + 1); return parts.join('.'); }
-  return version;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ProgressBar({ percent, color }: { percent: number; color: string }) {
-  return (
-    <div className="w-full rounded-full overflow-hidden" style={{ background: COLORS.barBg, height: '6px' }}>
-      <div
-        className="h-full rounded-full"
-        style={{ width: `${Math.min(100, Math.max(0, percent))}%`, background: color, transition: 'width 300ms ease, background 300ms ease' }}
-      />
-    </div>
-  );
+function Dot({ className }: { className: string }) {
+  return <span className={`w-[7px] h-[7px] rounded-full flex-shrink-0 inline-block ${className}`} />;
 }
 
-function Dot({ color }: { color: string }) {
-  return <span className="w-[7px] h-[7px] rounded-full flex-shrink-0 inline-block" style={{ background: color }} />;
-}
-
-function ModList({ mods, color, label }: { mods: { name: string }[]; color: string; label: string }) {
+function ModList({ mods, dotClass, labelClass, label }: {
+  mods: { name: string }[]; dotClass: string; labelClass: string; label: string;
+}) {
   if (mods.length === 0) return null;
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color }}>
+      <p className={`text-[11px] font-semibold uppercase tracking-wide mb-1.5 ${labelClass}`}>
         {label} ({mods.length})
       </p>
       <div className="flex flex-col gap-1">
         {mods.map((m, i) => (
           <div key={i} className="flex items-center gap-2 min-w-0">
-            <Dot color={color} />
-            <span className="text-xs truncate" style={{ color: COLORS.text }}>{m.name}</span>
+            <Dot className={dotClass} />
+            <span className="text-xs truncate text-foreground/80">{m.name}</span>
           </div>
         ))}
       </div>
@@ -108,26 +69,25 @@ function FileList({ added, removed, changed }: { added: string[]; removed: strin
   ];
   if (all.length === 0) return null;
 
-  const dotColor = { added: COLORS.green, removed: COLORS.red, changed: COLORS.yellow };
+  const dotClass = { added: 'bg-success', removed: 'bg-brand', changed: 'bg-warning' };
   const visible = expanded ? all : all.slice(0, FILE_COLLAPSE_LIMIT);
   const hidden = all.length - FILE_COLLAPSE_LIMIT;
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: COLORS.muted }}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-muted-foreground">
         Changed Files ({all.length})
       </p>
       <div className="flex flex-col gap-1">
         {visible.map(({ f, status }, i) => (
           <div key={i} className="flex items-center gap-2 min-w-0">
-            <Dot color={dotColor[status]} />
-            <span className="text-xs font-mono truncate" style={{ color: COLORS.text }}>{f}</span>
+            <Dot className={dotClass[status]} />
+            <span className="text-xs font-mono truncate text-foreground/80">{f}</span>
           </div>
         ))}
         {!expanded && hidden > 0 && (
           <button
-            className="flex items-center gap-1 text-xs mt-0.5 hover:opacity-75 transition-opacity"
-            style={{ color: COLORS.accent }}
+            className="flex items-center gap-1 text-xs mt-0.5 hover:opacity-75 transition-opacity text-link"
             onClick={() => setExpanded(true)}
           >
             <ChevronDown size={11} />+{hidden} more file{hidden !== 1 ? 's' : ''}
@@ -135,8 +95,7 @@ function FileList({ added, removed, changed }: { added: string[]; removed: strin
         )}
         {expanded && all.length > FILE_COLLAPSE_LIMIT && (
           <button
-            className="flex items-center gap-1 text-xs mt-0.5 hover:opacity-75 transition-opacity"
-            style={{ color: COLORS.accent }}
+            className="flex items-center gap-1 text-xs mt-0.5 hover:opacity-75 transition-opacity text-link"
             onClick={() => setExpanded(false)}
           >
             <ChevronUp size={11} />Show less
@@ -150,10 +109,7 @@ function FileList({ added, removed, changed }: { added: string[]; removed: strin
 function DiffSummary({ result }: { result: ChangelogResult }) {
   if (result.type === 'initial') {
     return (
-      <div
-        className="rounded-[8px] px-3 py-2.5 text-xs leading-relaxed"
-        style={{ background: 'rgba(63,185,80,0.06)', border: `1px solid rgba(63,185,80,0.2)`, color: COLORS.muted }}
-      >
+      <div className="rounded-lg px-3 py-2.5 text-xs leading-relaxed bg-success/10 border border-success/20 text-muted-foreground">
         Initial release — no previous version to compare.
       </div>
     );
@@ -161,10 +117,7 @@ function DiffSummary({ result }: { result: ChangelogResult }) {
 
   if (result.type === 'no_changes') {
     return (
-      <div
-        className="rounded-[8px] px-3 py-2.5 text-xs leading-relaxed"
-        style={{ background: 'rgba(255,168,9,0.06)', border: `1px solid rgba(255,168,9,0.2)`, color: COLORS.muted }}
-      >
+      <div className="rounded-lg px-3 py-2.5 text-xs leading-relaxed bg-warning/10 border border-warning/20 text-muted-foreground">
         No changes since last release — version was already exported.
       </div>
     );
@@ -176,28 +129,22 @@ function DiffSummary({ result }: { result: ChangelogResult }) {
 
   if (!hasAny) {
     return (
-      <div
-        className="rounded-[8px] px-3 py-2.5 text-xs"
-        style={{ background: COLORS.bg, border: `1px solid ${COLORS.divider}`, color: COLORS.muted }}
-      >
+      <div className="rounded-lg px-3 py-2.5 text-xs bg-subtle border border-line/6 text-muted-foreground">
         No changes detected since v{d.from}.
       </div>
     );
   }
 
   return (
-    <div
-      className="rounded-[8px] p-3 flex flex-col gap-3"
-      style={{ background: COLORS.bg, border: `1px solid ${COLORS.divider}` }}
-    >
+    <div className="rounded-lg p-3 flex flex-col gap-3 bg-subtle border border-line/6">
       {d.from && (
-        <p className="text-[11px]" style={{ color: COLORS.muted }}>
+        <p className="text-[11px] text-muted-foreground">
           Comparing against v{d.from}
         </p>
       )}
-      <ModList mods={d.addedMods}   color={COLORS.green}  label="Added Mods"   />
-      <ModList mods={d.removedMods} color={COLORS.red}    label="Removed Mods" />
-      <ModList mods={d.updatedMods} color={COLORS.yellow} label="Updated Mods" />
+      <ModList mods={d.addedMods}   dotClass="bg-success" labelClass="text-success" label="Added Mods"   />
+      <ModList mods={d.removedMods} dotClass="bg-brand"   labelClass="text-brand"   label="Removed Mods" />
+      <ModList mods={d.updatedMods} dotClass="bg-warning" labelClass="text-warning" label="Updated Mods" />
       <FileList added={d.addedFiles} removed={d.removedFiles} changed={d.changedFiles} />
     </div>
   );
@@ -220,7 +167,6 @@ export default function ExportModal({ config, onClose, onSuccess }: Props) {
 
   const setProgressRef = useRef(setProgress);
   setProgressRef.current = setProgress;
-  const [mouseDownTarget, setMouseDownTarget] = useState<EventTarget | null>(null);
 
   // On mount: try Modrinth API first, fall back to local manifest
   useEffect(() => {
@@ -254,9 +200,9 @@ export default function ExportModal({ config, onClose, onSuccess }: Props) {
   const isLocked       = phase === 'generating' || phase === 'exporting';
 
   const barColor =
-    phase === 'success'   ? COLORS.success :
-    phase === 'error'     ? COLORS.error   :
-                            COLORS.accent;
+    phase === 'success'   ? 'rgb(var(--color-success))' :
+    phase === 'error'     ? 'rgb(var(--color-danger))'  :
+                            'rgb(var(--color-link))';
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
@@ -346,381 +292,266 @@ export default function ExportModal({ config, onClose, onSuccess }: Props) {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="fixed inset-0 flex items-center justify-center z-50"
-      style={{ background: 'rgba(0,0,0,0.75)' }}
-      onMouseDown={e => setMouseDownTarget(e.target)}
-      onMouseUp={e => {
-        if (mouseDownTarget === e.target && e.target === e.currentTarget && !isLocked) onClose();
-        setMouseDownTarget(null);
-      }}
-    >
-      <div
-        className="w-[520px] rounded-[14px] overflow-hidden shadow-2xl flex flex-col"
-        style={{
-          background: COLORS.surface,
-          border: `1px solid ${COLORS.border}`,
-          maxHeight: 'min(90vh, 820px)',
-        }}
-      >
-        {/* ── Header ── */}
-        <div
-          className="flex items-center justify-between px-5 py-4 flex-shrink-0"
-          style={{ borderBottom: `1px solid ${COLORS.divider}` }}
-        >
-          <h2 className="text-white font-semibold text-[15px]">
-            {phase === 'changelog'
-              ? `Changelog — v${version.trim()}`
-              : 'Export .mrpack'}
-          </h2>
-          <button
-            onClick={onClose}
-            disabled={isLocked}
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ color: COLORS.muted }}
-            onMouseEnter={e => { if (!isLocked) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            aria-label="Close"
-          >
-            <X size={15} />
-          </button>
-        </div>
+    <Modal open onClose={onClose} dismissible={!isLocked} widthClass="w-[520px]">
+      <ModalHeader onClose={onClose} locked={isLocked}>
+        <h2 className="text-foreground font-semibold text-[15px]">
+          {phase === 'changelog'
+            ? `Changelog — v${version.trim()}`
+            : 'Export .mrpack'}
+        </h2>
+      </ModalHeader>
 
-        {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto">
+      <ModalBody>
+        {/* ── form phase ── */}
+        {phase === 'form' && (
+          <div className="p-5 flex flex-col gap-4">
+            <div>
+              <label className={LABEL_CLASSES}>Version</label>
+              <Input
+                value={version}
+                onChange={e => setVersion(e.target.value)}
+                placeholder={version === '' ? 'Loading…' : undefined}
+                className="font-mono"
+                hint={versionNote ?? undefined}
+              />
+            </div>
 
-          {/* ── form phase ── */}
-          {phase === 'form' && (
-            <div className="p-5 flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: COLORS.muted }}>Version</label>
-                <input
-                  value={version}
-                  onChange={e => setVersion(e.target.value)}
-                  placeholder={version === '' ? 'Loading…' : undefined}
-                  className="w-full rounded-[8px] px-3 py-2.5 text-sm text-white font-mono focus:outline-none transition-colors"
-                  style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}` }}
-                  onFocus={e => (e.currentTarget.style.borderColor = COLORS.accent)}
-                  onBlur={e => (e.currentTarget.style.borderColor = COLORS.border)}
-                />
-                {versionNote && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: COLORS.muted }}>
-                    {versionNote}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: COLORS.muted }}>Output file</label>
-                {outputPath ? (
-                  <div
-                    className="flex items-center gap-2 rounded-[8px] px-3 py-2.5"
-                    style={{ background: COLORS.bg, border: `1px solid ${COLORS.divider}` }}
-                  >
-                    <Package size={13} style={{ color: COLORS.muted }} className="flex-shrink-0" />
-                    <span className="flex-1 text-xs font-mono truncate" style={{ color: COLORS.text }} title={outputPath}>
-                      {outputPath}
-                    </span>
-                    <button
-                      onClick={handleChooseLocation}
-                      className="text-xs flex-shrink-0 hover:opacity-75 transition-opacity"
-                      style={{ color: COLORS.accent }}
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : (
+            <div>
+              <label className={LABEL_CLASSES}>Output file</label>
+              {outputPath ? (
+                <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 bg-subtle border border-line/6">
+                  <Package size={13} className="text-muted-foreground flex-shrink-0" />
+                  <span className="flex-1 text-xs font-mono truncate text-foreground/80" title={outputPath}>
+                    {outputPath}
+                  </span>
                   <button
                     onClick={handleChooseLocation}
-                    className="w-full flex items-center justify-center gap-2 rounded-[8px] px-3 py-2.5 text-sm transition-colors"
-                    style={{ background: COLORS.bg, border: `1px dashed rgba(255,255,255,0.15)`, color: COLORS.muted }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = COLORS.accent; e.currentTarget.style.color = COLORS.accent; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = COLORS.muted; }}
+                    className="text-xs flex-shrink-0 hover:opacity-75 transition-opacity text-link"
                   >
-                    <FolderOpen size={14} />Choose location…
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── generating phase ── */}
-          {phase === 'generating' && (
-            <div className="p-6 flex flex-col gap-5">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium" style={{ color: COLORS.muted }}>Progress</span>
-                  <span className="text-xs font-mono tabular-nums" style={{ color: COLORS.accent }}>{progress.percent}%</span>
-                </div>
-                <ProgressBar percent={progress.percent} color={barColor} />
-              </div>
-              <p className="text-sm text-center leading-relaxed" style={{ color: COLORS.muted }}>
-                {progress.message || 'Starting…'}
-              </p>
-            </div>
-          )}
-
-          {/* ── changelog phase ── */}
-          {phase === 'changelog' && changelogResult && (
-            <div className="p-5 flex flex-col gap-4">
-              {/* Fallback warning: could not fetch from Modrinth */}
-              {changelogResult.warning && (
-                <div
-                  className="flex items-start gap-2.5 p-3 rounded-[8px]"
-                  style={{ background: 'rgba(227,179,65,0.08)', border: '1px solid rgba(227,179,65,0.25)' }}
-                >
-                  <AlertCircle size={14} style={{ color: COLORS.warn }} className="mt-0.5 flex-shrink-0" />
-                  <p className="text-xs leading-relaxed" style={{ color: COLORS.warn }}>
-                    {changelogResult.warning}
-                  </p>
-                </div>
-              )}
-              {/* Info note: e.g. "Mod changes since vX on Modrinth" */}
-              {changelogResult.note && !changelogResult.warning && (
-                <div
-                  className="flex items-start gap-2.5 p-3 rounded-[8px]"
-                  style={{ background: 'rgba(88,166,255,0.06)', border: '1px solid rgba(88,166,255,0.2)' }}
-                >
-                  <p className="text-xs leading-relaxed" style={{ color: COLORS.accent }}>
-                    {changelogResult.note}
-                  </p>
-                </div>
-              )}
-              {/* Visual diff summary */}
-              <div>
-                <p className="text-xs font-medium mb-2" style={{ color: COLORS.muted }}>Changes detected</p>
-                <DiffSummary result={changelogResult} />
-              </div>
-
-              {/* Divider */}
-              <div style={{ borderTop: `1px solid ${COLORS.divider}` }} />
-
-              {/* Editable changelog */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium" style={{ color: COLORS.muted }}>Changelog text</label>
-                  <button
-                    onClick={() => setChangelogText(originalMarkdown)}
-                    disabled={changelogText === originalMarkdown}
-                    className="flex items-center gap-1 text-xs hover:opacity-75 transition-opacity disabled:opacity-30"
-                    style={{ color: COLORS.accent }}
-                  >
-                    <RotateCcw size={10} />Reset
+                    Change
                   </button>
                 </div>
-                <textarea
-                  value={changelogText}
-                  onChange={e => setChangelogText(e.target.value)}
-                  rows={11}
-                  className="w-full rounded-[8px] px-3 py-2.5 text-xs font-mono text-white resize-none focus:outline-none transition-colors"
-                  style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, lineHeight: '1.6' }}
-                  onFocus={e => (e.currentTarget.style.borderColor = COLORS.accent)}
-                  onBlur={e => (e.currentTarget.style.borderColor = COLORS.border)}
-                  spellCheck={false}
-                />
-              </div>
-
-              {/* Snapshot-exists warning */}
-              {changelogResult.snapshotExists && (
-                <div
-                  className="flex items-start gap-2.5 p-3 rounded-[8px]"
-                  style={{ background: 'rgba(227,179,65,0.08)', border: '1px solid rgba(227,179,65,0.25)' }}
+              ) : (
+                <button
+                  onClick={handleChooseLocation}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors bg-subtle border border-dashed border-line/15 text-muted-foreground hover:border-link hover:text-link"
                 >
-                  <AlertCircle size={14} style={{ color: COLORS.warn }} className="mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold mb-1" style={{ color: COLORS.warn }}>
-                      Release v{version.trim()} already has a snapshot
-                    </p>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={overwriteSnapshot}
-                        onChange={e => setOverwriteSnapshot(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded accent-amber-400"
-                      />
-                      <span className="text-xs" style={{ color: COLORS.muted }}>
-                        Overwrite existing snapshot and changelog
-                      </span>
-                    </label>
-                  </div>
-                </div>
+                  <FolderOpen size={14} />Choose location…
+                </button>
               )}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* ── exporting phase ── */}
-          {phase === 'exporting' && (
-            <div className="p-6 flex flex-col gap-5">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium" style={{ color: COLORS.muted }}>Progress</span>
-                  <span className="text-xs font-mono tabular-nums" style={{ color: COLORS.accent }}>{progress.percent}%</span>
-                </div>
-                <ProgressBar percent={progress.percent} color={barColor} />
+        {/* ── generating phase ── */}
+        {phase === 'generating' && (
+          <div className="p-6 flex flex-col gap-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground">Progress</span>
+                <span className="text-xs font-mono tabular-nums text-link">{progress.percent}%</span>
               </div>
-              <p className="text-sm text-center leading-relaxed" style={{ color: COLORS.muted }}>
-                {progress.message || 'Starting…'}
-              </p>
+              <ProgressBar percent={progress.percent} color={barColor} />
             </div>
-          )}
+            <p className="text-sm text-center leading-relaxed text-muted-foreground">
+              {progress.message || 'Starting…'}
+            </p>
+          </div>
+        )}
 
-          {/* ── success phase ── */}
-          {phase === 'success' && (
-            <div className="p-6 flex flex-col gap-5">
+        {/* ── changelog phase ── */}
+        {phase === 'changelog' && changelogResult && (
+          <div className="p-5 flex flex-col gap-4">
+            {/* Fallback warning: could not fetch from Modrinth */}
+            {changelogResult.warning && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-warning-soft/10 border border-warning-soft/25">
+                <AlertCircle size={14} className="text-warning-soft mt-0.5 flex-shrink-0" />
+                <p className="text-xs leading-relaxed text-warning-soft">
+                  {changelogResult.warning}
+                </p>
+              </div>
+            )}
+            {/* Info note: e.g. "Mod changes since vX on Modrinth" */}
+            {changelogResult.note && !changelogResult.warning && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-link/10 border border-link/20">
+                <p className="text-xs leading-relaxed text-link">
+                  {changelogResult.note}
+                </p>
+              </div>
+            )}
+            {/* Visual diff summary */}
+            <div>
+              <p className="text-xs font-medium mb-2 text-muted-foreground">Changes detected</p>
+              <DiffSummary result={changelogResult} />
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-line/6" />
+
+            {/* Editable changelog */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Changelog text</label>
+                <button
+                  onClick={() => setChangelogText(originalMarkdown)}
+                  disabled={changelogText === originalMarkdown}
+                  className="flex items-center gap-1 text-xs hover:opacity-75 transition-opacity disabled:opacity-30 text-link"
+                >
+                  <RotateCcw size={10} />Reset
+                </button>
+              </div>
+              <Textarea
+                value={changelogText}
+                onChange={e => setChangelogText(e.target.value)}
+                rows={11}
+                className="text-xs font-mono"
+                style={{ lineHeight: '1.6' }}
+                spellCheck={false}
+              />
+            </div>
+
+            {/* Snapshot-exists warning */}
+            {changelogResult.snapshotExists && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-warning-soft/10 border border-warning-soft/25">
+                <AlertCircle size={14} className="text-warning-soft mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold mb-1 text-warning-soft">
+                    Release v{version.trim()} already has a snapshot
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={overwriteSnapshot}
+                      onChange={e => setOverwriteSnapshot(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded accent-warning"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Overwrite existing snapshot and changelog
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── exporting phase ── */}
+        {phase === 'exporting' && (
+          <div className="p-6 flex flex-col gap-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground">Progress</span>
+                <span className="text-xs font-mono tabular-nums text-link">{progress.percent}%</span>
+              </div>
+              <ProgressBar percent={progress.percent} color={barColor} />
+            </div>
+            <p className="text-sm text-center leading-relaxed text-muted-foreground">
+              {progress.message || 'Starting…'}
+            </p>
+          </div>
+        )}
+
+        {/* ── success phase ── */}
+        {phase === 'success' && (
+          <div className="p-6 flex flex-col gap-5">
+            <div className="flex justify-center">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-success/10 border border-success/25">
+                <CheckCircle2 size={24} className="text-success" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground">Complete</span>
+                <span className="text-xs font-mono tabular-nums text-success">100%</span>
+              </div>
+              <ProgressBar percent={100} color="rgb(var(--color-success))" />
+            </div>
+            <p className="text-sm text-center text-muted-foreground">Export complete!</p>
+            {fileSize !== null && (
               <div className="flex justify-center">
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center"
-                  style={{ background: 'rgba(63,185,80,0.10)', border: '1px solid rgba(63,185,80,0.25)' }}
-                >
-                  <CheckCircle2 size={24} style={{ color: COLORS.success }} />
-                </div>
+                <span className="text-xs px-3 py-1 rounded-full font-mono bg-success/10 text-success">
+                  {formatSize(fileSize)}
+                </span>
               </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium" style={{ color: COLORS.muted }}>Complete</span>
-                  <span className="text-xs font-mono tabular-nums" style={{ color: COLORS.success }}>100%</span>
-                </div>
-                <ProgressBar percent={100} color={COLORS.success} />
-              </div>
-              <p className="text-sm text-center" style={{ color: COLORS.muted }}>Export complete!</p>
-              {fileSize !== null && (
-                <div className="flex justify-center">
-                  <span
-                    className="text-xs px-3 py-1 rounded-full font-mono"
-                    style={{ background: 'rgba(63,185,80,0.08)', color: COLORS.success }}
-                  >
-                    {formatSize(fileSize)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
+        )}
 
-          {/* ── error phase ── */}
-          {phase === 'error' && error && (
-            <div className="p-5">
-              <div
-                className="flex items-start gap-2.5 p-3 rounded-[8px]"
-                style={{ background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.25)' }}
-              >
-                <AlertCircle size={14} style={{ color: COLORS.error }} className="mt-0.5 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold mb-0.5" style={{ color: COLORS.error }}>Export failed</p>
-                  <p className="text-xs break-words leading-relaxed" style={{ color: COLORS.muted }}>{error}</p>
-                </div>
+        {/* ── error phase ── */}
+        {phase === 'error' && error && (
+          <div className="p-5">
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-danger/10 border border-danger/25">
+              <AlertCircle size={14} className="text-danger mt-0.5 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold mb-0.5 text-danger">Export failed</p>
+                <p className="text-xs break-words leading-relaxed text-muted-foreground">{error}</p>
               </div>
             </div>
-          )}
+          </div>
+        )}
+      </ModalBody>
 
-        </div>
+      {/* ── Footer ── */}
+      <ModalFooter>
+        {phase === 'form' && (
+          <>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!version.trim() || !outputPath}
+              onClick={handleGenerateChangelog}
+            >
+              Generate Changelog →
+            </Button>
+          </>
+        )}
 
-        {/* ── Footer ── */}
-        <div
-          className="flex items-center justify-end gap-3 px-5 py-4 flex-shrink-0"
-          style={{ borderTop: `1px solid ${COLORS.divider}` }}
-        >
-          {phase === 'form' && (
-            <>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-[8px] text-sm transition-colors"
-                style={{ color: COLORS.muted }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleGenerateChangelog}
-                disabled={!version.trim() || !outputPath}
-                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-white text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: COLORS.btnBlue }}
-                onMouseEnter={e => { if (version.trim() && outputPath) e.currentTarget.style.background = COLORS.btnBluH; }}
-                onMouseLeave={e => (e.currentTarget.style.background = COLORS.btnBlue)}
-              >
-                Generate Changelog →
-              </button>
-            </>
-          )}
+        {phase === 'generating' && (
+          <span className="px-4 py-2 text-sm text-muted-foreground">Generating…</span>
+        )}
 
-          {phase === 'generating' && (
-            <span className="px-4 py-2 text-sm" style={{ color: COLORS.muted }}>Generating…</span>
-          )}
+        {phase === 'changelog' && (
+          <>
+            <Button variant="ghost" onClick={handleBack}>
+              ← Back
+            </Button>
+            <Button variant="primary" icon={Package} onClick={handleExport}>
+              Export
+            </Button>
+          </>
+        )}
 
-          {phase === 'changelog' && (
-            <>
-              <button
-                onClick={handleBack}
-                className="px-4 py-2 rounded-[8px] text-sm transition-colors"
-                style={{ color: COLORS.muted }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                ← Back
-              </button>
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-white text-sm font-medium transition-all"
-                style={{ background: COLORS.btnBlue }}
-                onMouseEnter={e => (e.currentTarget.style.background = COLORS.btnBluH)}
-                onMouseLeave={e => (e.currentTarget.style.background = COLORS.btnBlue)}
-              >
-                <Package size={14} />Export
-              </button>
-            </>
-          )}
+        {phase === 'exporting' && (
+          <span className="px-4 py-2 text-sm text-muted-foreground">Exporting…</span>
+        )}
 
-          {phase === 'exporting' && (
-            <span className="px-4 py-2 text-sm" style={{ color: COLORS.muted }}>Exporting…</span>
-          )}
+        {phase === 'success' && (
+          <>
+            <Button variant="ghost" icon={FolderOpen} onClick={handleOpenFolder}>
+              Open Folder
+            </Button>
+            <button
+              onClick={onSuccess}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors text-success hover:bg-success/10"
+            >
+              Done
+            </button>
+          </>
+        )}
 
-          {phase === 'success' && (
-            <>
-              <button
-                onClick={handleOpenFolder}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-[8px] text-sm transition-colors"
-                style={{ color: COLORS.muted }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <FolderOpen size={14} />Open Folder
-              </button>
-              <button
-                onClick={onSuccess}
-                className="px-4 py-2 rounded-[8px] text-sm font-medium transition-colors"
-                style={{ color: COLORS.success }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(63,185,80,0.08)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                Done
-              </button>
-            </>
-          )}
-
-          {phase === 'error' && (
-            <>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-[8px] text-sm transition-colors"
-                style={{ color: COLORS.muted }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                Close
-              </button>
-              <button
-                onClick={handleRetry}
-                className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-white text-sm font-medium transition-all"
-                style={{ background: COLORS.btnBlue }}
-                onMouseEnter={e => (e.currentTarget.style.background = COLORS.btnBluH)}
-                onMouseLeave={e => (e.currentTarget.style.background = COLORS.btnBlue)}
-              >
-                <Package size={14} />Retry
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+        {phase === 'error' && (
+          <>
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+            <Button variant="primary" icon={Package} onClick={handleRetry}>
+              Retry
+            </Button>
+          </>
+        )}
+      </ModalFooter>
+    </Modal>
   );
 }

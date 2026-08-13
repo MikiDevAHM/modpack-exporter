@@ -1,5 +1,7 @@
 import React from 'react';
-import { Loader2, Download, AlertTriangle, RotateCw, Package } from 'lucide-react';
+import { Download, AlertTriangle, RotateCw, Package, Loader2 } from 'lucide-react';
+import Button from '../base/Button';
+import BrandLogo from '../common/BrandLogo';
 
 export type InitState = 'cloning' | 'pulling' | 'error';
 
@@ -31,38 +33,22 @@ export default function InitialSetupScreen({ state, progress, error, onRetry }: 
   if (state === 'error') {
     return (
       <div className="flex flex-1 items-center justify-center overflow-hidden px-6">
-        <div
-          className="w-full max-w-[440px] rounded-[14px] p-7 flex flex-col items-center text-center shadow-2xl"
-          style={{ background: '#26262A', border: '1px solid rgba(248,81,73,0.28)' }}
-        >
-          <div
-            className="w-12 h-12 rounded-[12px] flex items-center justify-center mb-4"
-            style={{ background: 'rgba(248,81,73,0.14)' }}
-          >
-            <AlertTriangle size={22} style={{ color: '#f85149' }} />
+        <div className="w-full max-w-[440px] rounded-xl p-7 flex flex-col items-center text-center shadow-2xl bg-card border border-danger/25">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-danger/10">
+            <AlertTriangle size={22} className="text-danger" />
           </div>
-          <h2 className="text-white font-semibold text-[17px] mb-1.5">Setup couldn’t finish</h2>
-          <p className="text-[#A9A9AB] text-sm leading-relaxed mb-1">
+          <h2 className="text-foreground font-semibold text-[17px] mb-1.5">Setup couldn’t finish</h2>
+          <p className="text-muted text-sm leading-relaxed mb-1">
             We couldn’t download the modpack. Your files were not changed — you can safely retry.
           </p>
           {error && (
-            <p
-              className="text-xs font-mono mt-2 mb-4 px-3 py-2 rounded-[8px] w-full break-words"
-              style={{ background: '#1E1E1E', color: '#f0a5a0', border: '1px solid rgba(248,81,73,0.2)' }}
-            >
+            <p className="text-xs font-mono mt-2 mb-4 px-3 py-2 rounded-lg w-full break-words bg-subtle text-danger/90 border border-danger/20">
               {error}
             </p>
           )}
-          <button
-            onClick={onRetry}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-[8px] text-white text-sm font-medium transition-all mt-2"
-            style={{ background: '#0890FE' }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#1a9dff')}
-            onMouseLeave={e => (e.currentTarget.style.background = '#0890FE')}
-          >
-            <RotateCw size={15} />
+          <Button variant="primary" icon={RotateCw} className="mt-2" onClick={onRetry}>
             Retry setup
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -85,65 +71,39 @@ export default function InitialSetupScreen({ state, progress, error, onRetry }: 
 
   return (
     <div className="flex flex-1 items-center justify-center overflow-hidden px-6">
-      <div
-        className="w-full max-w-[460px] rounded-[14px] p-8 flex flex-col items-center text-center shadow-2xl"
-        style={{ background: '#26262A', border: '1px solid rgba(255,255,255,0.07)' }}
-      >
+      <div className="w-full max-w-[460px] rounded-xl p-8 flex flex-col items-center text-center shadow-2xl bg-card border border-line/8">
         {/* Icon badge */}
-        <div
-          className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-5 relative"
-          style={{ background: 'linear-gradient(135deg, #E24729 0%, #FF3F6E 100%)' }}
-        >
-          {isCloning ? (
-            <Package size={24} className="text-white" />
-          ) : (
-            <Download size={24} className="text-white" />
-          )}
+        <div className="mb-5">
+          <BrandLogo
+            sizeClass="w-14 h-14 rounded-[14px]"
+            icon={isCloning ? Package : Download}
+            iconSize={24}
+          />
         </div>
 
-        <h2 className="text-white font-semibold text-[18px] mb-2">{heading}</h2>
-        <p className="text-[#A9A9AB] text-sm leading-relaxed mb-6 max-w-[360px]">{subtext}</p>
+        <h2 className="text-foreground font-semibold text-[18px] mb-2">{heading}</h2>
+        <p className="text-muted text-sm leading-relaxed mb-6 max-w-[360px]">{subtext}</p>
 
         {/* Progress bar */}
-        <div
-          className="w-full h-2 rounded-full overflow-hidden mb-3 relative"
-          style={{ background: '#1E1E1E' }}
-        >
+        <div className="w-full h-2 rounded-full overflow-hidden mb-3 relative bg-subtle">
           {percent === null ? (
             // Indeterminate sweep while cloning
-            <div
-              className="absolute top-0 bottom-0 w-1/3 rounded-full initial-setup-indeterminate"
-              style={{ background: 'linear-gradient(90deg, #E24729 0%, #FF3F6E 100%)' }}
-            />
+            <div className="absolute top-0 bottom-0 w-1/3 rounded-full initial-setup-indeterminate bg-gradient-to-r from-brand to-brand-end" />
           ) : (
             <div
-              className="h-full rounded-full transition-[width] duration-300 ease-out"
-              style={{
-                width: `${percent}%`,
-                background: 'linear-gradient(90deg, #E24729 0%, #FF3F6E 100%)',
-              }}
+              className="h-full rounded-full transition-[width] duration-300 ease-out bg-gradient-to-r from-brand to-brand-end"
+              style={{ width: `${percent}%` }}
             />
           )}
         </div>
 
         {/* Live detail line */}
-        <div className="flex items-center gap-2 text-xs text-[#A9A9AB] min-h-[18px] w-full justify-center">
+        <div className="flex items-center gap-2 text-xs text-muted min-h-[18px] w-full justify-center">
           <Loader2 size={12} className="animate-spin flex-shrink-0" />
           <span className="truncate" title={detail}>{detail}</span>
           {percent !== null && <span className="tabular-nums flex-shrink-0">· {percent}%</span>}
         </div>
       </div>
-
-      {/* Keyframes for the indeterminate clone bar */}
-      <style>{`
-        @keyframes initial-setup-indeterminate {
-          0%   { left: -35%; }
-          100% { left: 100%; }
-        }
-        .initial-setup-indeterminate {
-          animation: initial-setup-indeterminate 1.1s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Header from '@/lib/components/Header';
 import type { Page } from '@/lib/components/Header';
 import ActivityFeed from '@/lib/components/ActivityFeed';
+import HistoryPage from '@/lib/components/HistoryPage';
 import Sidebar from '@/lib/components/Sidebar';
 import SettingsPage from '@/lib/components/SettingsPage';
 import LogsPage from '@/lib/components/LogsPage';
@@ -13,10 +14,10 @@ import ExportModal from '@/lib/components/ExportModal';
 import SettingsModal from '@/lib/components/SettingsModal';
 import ConfirmDialog from '@/lib/components/ConfirmDialog';
 import LoginModal from '@/lib/components/LoginModal';
-import WindowControls from '@/lib/components/WindowControls';
-import VersionHistoryModal from '@/lib/components/VersionHistoryModal';
 import PullResultPopup from '@/lib/components/PullResultPopup';
 import InitialSetupScreen, { InitProgress } from '@/lib/components/InitialSetupScreen';
+import Button from '@/lib/components/base/Button';
+import BrandLogo from '@/lib/components/common/BrandLogo';
 import { initLogger } from '@/lib/utils/logger';
 import { initSettingsCache } from '@/lib/utils/settingsCache';
 
@@ -73,7 +74,7 @@ export default function App() {
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
 
   // ── Pull result popup (manual pulls + first-run pull) ─────────────────────
   const [pullResult, setPullResult] = useState<PullResult | null>(null);
@@ -87,9 +88,7 @@ export default function App() {
   const [initError, setInitError] = useState<string | null>(null);
   const initInFlightRef = React.useRef(false);
 
-  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [profileMode, setProfileMode] = useState<'dev' | 'prod'>('dev');
-  const [lastSnapshotTime, setLastSnapshotTime] = useState<string | null>(null);
 
   // ── Undo last push state ───────────────────────────────────────────────────
   const [isUndoingLastPush, setIsUndoingLastPush] = useState(false);
@@ -350,10 +349,6 @@ export default function App() {
 
     const mode = await window.electron.profile.getMode();
     setProfileMode(mode);
-    const snapshots = await window.electron.profile.listSnapshots();
-    if (snapshots.success && snapshots.data && snapshots.data.length > 0) {
-      setLastSnapshotTime(snapshots.data[snapshots.data.length - 1].timestamp);
-    }
 
     // Surface a hint if modpack root isn't configured yet.
     const root = await window.electron.settings.get('modpackRoot');
@@ -480,12 +475,7 @@ export default function App() {
     }
   };
 
-  const handleUndoLastPush = async () => {
-    const confirmed = window.confirm(
-      'Undo your last push? This will revert all changes from your most recent push and update everyone.'
-    );
-    if (!confirmed) return;
-
+  const performUndoLastPush = useCallback(async () => {
     setIsUndoingLastPush(true);
     const tid = toast.loading('Undoing last push\u2026');
     try {
@@ -509,7 +499,9 @@ export default function App() {
     } finally {
       setIsUndoingLastPush(false);
     }
-  };
+  }, [config, loadGitStatus, loadCommits]);
+
+  const handleUndoLastPush = () => setShowUndoConfirm(true);
 
   const handlePushSuccess = async (commit?: PushedCommit) => {
     setShowPush(false);
@@ -597,37 +589,6 @@ export default function App() {
     setShowSettings(false);
   };
 
-  const handleVersionHistory = () => setShowVersionHistory(true);
-
-  const handlePromote = () => {
-    setShowPromoteConfirm(true);
-  };
-
-  const handleConfirmPromote = async () => {
-    setShowPromoteConfirm(false);
-    const tid = toast.loading('Promoting to production...');
-    const r = await window.electron.profile.promote();
-    toast.dismiss(tid);
-    if (r.success) {
-      toast.success(`Promoted: ${r.copiedMods} mods, ${r.copiedFiles} files`);
-      setProfileMode('prod');
-    } else {
-      toast.error(`Promote failed: ${r.error}`);
-    }
-  };
-
-  const handleTakeSnapshot = async () => {
-    const tid = toast.loading('Taking profile snapshot...');
-    const r = await window.electron.profile.snapshot();
-    toast.dismiss(tid);
-    if (r.success && r.data) {
-      setLastSnapshotTime(r.data.timestamp);
-      toast.success('Profile snapshot saved');
-    } else {
-      toast.error(`Snapshot failed: ${r.error}`);
-    }
-  };
-
   const handleLoginRequest = () => setShowLogin(true);
 
   const handleLoginSuccess = async () => {
@@ -656,15 +617,10 @@ export default function App() {
   // ── Render: loading splash ─────────────────────────────────────────────────
   if (authState === 'loading') {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#1E1E1E] drag-region">
+      <div className="flex items-center justify-center h-screen bg-background drag-region">
         <div className="flex flex-col items-center gap-3 no-drag">
-          <div
-            className="w-10 h-10 rounded-[12px] flex items-center justify-center text-white font-bold"
-            style={{ background: 'linear-gradient(135deg, #E24729 0%, #FF3F6E 100%)' }}
-          >
-            O
-          </div>
-          <div className="flex items-center gap-2 text-[#A9A9AB] text-sm">
+          <BrandLogo sizeClass="w-10 h-10" />
+          <div className="flex items-center gap-2 text-muted text-sm">
             <Loader2 size={14} className="animate-spin" />
             Checking credentials\u2026
           </div>
@@ -676,52 +632,33 @@ export default function App() {
   // ── Render: unauthenticated ───────────────────────────────────────────────
   if (authState === 'unauthenticated') {
     return (
-      <div className="flex flex-col h-screen bg-[#1E1E1E] overflow-hidden">
-        <div
-          className="h-14 drag-region flex items-center"
-          style={{ paddingLeft: window.electron.platform === 'darwin' ? 2 : 20, paddingRight: 20 }}
-        >
-          {window.electron.platform === 'darwin' && <WindowControls />}
-          <div className="flex items-center gap-3 no-drag">
-            <div
-              className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white font-bold text-sm"
-              style={{ background: 'linear-gradient(135deg, #E24729 0%, #FF3F6E 100%)' }}
-            >
-              O
-            </div>
-            <span className="font-semibold text-white text-[15px]">ORB Modpack Exporter</span>
-          </div>
-          {window.electron.platform !== 'darwin' && (
-            <>
-              <div className="flex-1" />
-              <WindowControls />
-            </>
-          )}
-        </div>
+      <div className="flex flex-col h-screen bg-background overflow-hidden">
+        <Header
+          user={null}
+          currentPage={page}
+          onNavigate={setPage}
+          onLogout={handleLogout}
+          onSignIn={handleLoginRequest}
+        />
 
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="text-center max-w-sm">
-            <div
-              className="w-16 h-16 rounded-[16px] flex items-center justify-center mx-auto mb-5"
-              style={{ background: 'linear-gradient(135deg, #E24729 0%, #FF3F6E 100%)' }}
-            >
-              <span className="text-white text-2xl font-bold">O</span>
+            <div className="flex justify-center mb-5">
+              <BrandLogo sizeClass="w-16 h-16" />
             </div>
-            <h2 className="text-white text-lg font-semibold mb-2">Welcome to ORB Modpack Exporter</h2>
-            <p className="text-[#A9A9AB] text-sm mb-7 leading-relaxed">
+            <h2 className="text-foreground text-lg font-semibold mb-2">Welcome to ORB Modpack Exporter</h2>
+            <p className="text-muted text-sm mb-7 leading-relaxed">
               Sign in with your GitHub account to get started with modpack collaboration.
               You must be a member of the OR-Beyond organization.
             </p>
-            <button
+            <Button
+              variant="primary"
+              icon={Github}
               onClick={handleLoginRequest}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-white text-sm font-medium transition-all"
-              style={{ background: '#0890FE' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#1a9dff')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#0890FE')}
+              className="px-6 py-2.5 rounded-[10px]"
             >
-              <Github size={16} />
               Sign in with GitHub
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -737,7 +674,7 @@ export default function App() {
 
   // ── Render: authenticated dashboard ────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen bg-[#1E1E1E] overflow-hidden">
+    <div className="flex flex-col h-screen bg-background overflow-hidden">
       <Header
         user={user}
         currentPage={page}
@@ -760,6 +697,8 @@ export default function App() {
               isLoading={isLoadingCommits}
               hasToken={true}
               onRefresh={handleRefreshActivity}
+              limit={5}
+              onViewAll={() => setPage('history')}
             />
             <Sidebar
               config={config}
@@ -778,13 +717,15 @@ export default function App() {
                 window.electron.app.openExternal(`${config.github_repo.replace('.git', '')}/issues/new`)
               }
               profileMode={profileMode}
-              lastSnapshotTime={lastSnapshotTime}
-              onVersionHistory={handleVersionHistory}
-              onPromote={handlePromote}
-              onTakeSnapshot={handleTakeSnapshot}
             />
           </div>
         )
+      ) : page === 'history' ? (
+        <HistoryPage
+          commits={commits}
+          isLoading={isLoadingCommits}
+          onRefresh={handleRefreshActivity}
+        />
       ) : page === 'settings' ? (
         <SettingsPage
           onBack={() => setPage('home')}
@@ -805,9 +746,6 @@ export default function App() {
       {showExport && config && (
         <ExportModal config={config} onClose={() => setShowExport(false)} onSuccess={handleExportSuccess} />
       )}
-      {showVersionHistory && (
-        <VersionHistoryModal onClose={() => setShowVersionHistory(false)} />
-      )}
       {showSettings && (
         <SettingsModal
           showSkip
@@ -820,13 +758,16 @@ export default function App() {
       )}
 
       <ConfirmDialog
-        open={showPromoteConfirm}
-        title="Promote to Production"
-        description="This will copy all mods, configs, and override files from your development profile to the production workspace. Team members pulling from production will receive these changes."
-        confirmLabel="Promote"
-        variant="warning"
-        onConfirm={handleConfirmPromote}
-        onCancel={() => setShowPromoteConfirm(false)}
+        open={showUndoConfirm}
+        title="Undo Last Push"
+        description="This will revert all changes from your most recent push and update everyone."
+        confirmLabel="Undo Push"
+        variant="danger"
+        onConfirm={() => {
+          setShowUndoConfirm(false);
+          void performUndoLastPush();
+        }}
+        onCancel={() => setShowUndoConfirm(false)}
       />
       {pullResult && (
         <PullResultPopup
@@ -840,10 +781,9 @@ export default function App() {
 
       {isAutoSyncing && (
         <div
-          className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs z-30 select-none"
-          style={{ background: 'rgba(30,30,30,0.9)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }}
+          className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs z-30 select-none bg-overlay/90 text-muted-foreground border border-line/8"
         >
-          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#58a6ff' }} />
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-link" />
           Syncing\u2026
         </div>
       )}
@@ -851,8 +791,7 @@ export default function App() {
       {!modpackRootSet && !showSettings && !initActive && page === 'home' && (
         <button
           onClick={() => setPage('settings')}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-xs font-medium transition-colors shadow-lg z-30"
-          style={{ background: '#FFA809', color: '#1E1E1E' }}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-xs font-medium transition-colors shadow-lg z-30 bg-warning text-on-warning"
         >
           {`\u2699 Set modpack root in Settings`}
         </button>

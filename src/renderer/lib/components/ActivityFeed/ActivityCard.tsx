@@ -1,86 +1,31 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Box, ChevronDown, ChevronRight, Code, ExternalLink,
   File, Image, Loader2, Settings,
 } from 'lucide-react';
 import type { CommitCard, CommitChanges, CommitFileEntry, CommitModEntry } from '../../types';
+import ModIconLazy from '../common/ModIconLazy';
+import Badge from '../base/Badge';
+import { timeAgo } from '../../utils/format';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function timeAgo(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 function parseOwnerRepo(url: string): { owner: string; repo: string } | null {
   const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/commit\//);
   return m ? { owner: m[1], repo: m[2] } : null;
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-// 28×28 icon for the expanded mod list
-function ModIcon({ iconUrl, name }: { iconUrl: string | null; name: string }) {
-  const [failed, setFailed] = useState(false);
-  if (!iconUrl || failed) {
-    return (
-      <div
-        className="w-7 h-7 flex items-center justify-center rounded-[6px] flex-shrink-0 font-bold text-xs text-white"
-        style={{ background: '#21262d' }}
-      >
-        {name.charAt(0).toUpperCase()}
-      </div>
-    );
-  }
-  return (
-    <img
-      src={iconUrl}
-      alt={name}
-      className="w-7 h-7 rounded-[6px] flex-shrink-0 object-cover"
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-// 24×24 icon for the collapsed summary row
-function SmallModIcon({ mod, iconUrl: overrideIcon }: { mod: CommitModEntry; iconUrl?: string | null }) {
-  const [failed, setFailed] = useState(false);
-  const iconUrl = overrideIcon ?? mod.iconUrl;
-  const ringColor = mod.status === 'added' ? '#3fb95066'
-    : mod.status === 'removed' ? '#f8514966'
-    : '#d2991d66';
-
-  if (!iconUrl || failed) {
-    return (
-      <div
-        title={mod.name}
-        className="flex items-center justify-center flex-shrink-0 font-bold text-white"
-        style={{ width: 24, height: 24, borderRadius: 4, background: '#21262d', fontSize: 10, border: `2px solid ${ringColor}` }}
-      >
-        {mod.name.charAt(0).toUpperCase()}
-      </div>
-    );
-  }
-  return (
-    <img
-      src={iconUrl}
-      alt={mod.name}
-      title={mod.name}
-      style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover', flexShrink: 0, border: `2px solid ${ringColor}` }}
-      onError={() => setFailed(true)}
-    />
-  );
+function statusRingClass(status: CommitModEntry['status']): string {
+  if (status === 'added') return 'border-success/40';
+  if (status === 'removed') return 'border-danger/40';
+  return 'border-warning-soft/40';
 }
 
 function StatusDot({ status }: { status: string }) {
-  const color = status === 'added' ? '#3fb950'
-    : status === 'removed' ? '#f85149'
-    : '#d2991d';
-  return <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />;
+  const color = status === 'added' ? 'bg-success'
+    : status === 'removed' ? 'bg-danger'
+    : 'bg-warning-soft';
+  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
 }
 
 function ModStatusBadge({ status, versionNumber, oldVersionNumber }: {
@@ -89,40 +34,19 @@ function ModStatusBadge({ status, versionNumber, oldVersionNumber }: {
   oldVersionNumber?: string | null;
 }) {
   if (status === 'added') {
-    return (
-      <span
-        className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-        style={{ background: 'rgba(63,185,80,0.15)', color: '#3fb950' }}
-      >
-        Added
-      </span>
-    );
+    return <Badge tone="success">Added</Badge>;
   }
   if (status === 'removed') {
-    return (
-      <span
-        className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-        style={{ background: 'rgba(248,81,73,0.15)', color: '#f85149' }}
-      >
-        Removed
-      </span>
-    );
+    return <Badge tone="danger">Removed</Badge>;
   }
   if (oldVersionNumber && versionNumber && oldVersionNumber !== versionNumber) {
     return (
-      <span className="text-xs flex-shrink-0" style={{ color: '#8b949e' }}>
+      <span className="text-xs text-muted-foreground flex-shrink-0">
         {oldVersionNumber} → {versionNumber}
       </span>
     );
   }
-  return (
-    <span
-      className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-      style={{ background: 'rgba(210,153,29,0.15)', color: '#d2991d' }}
-    >
-      Updated
-    </span>
-  );
+  return <Badge tone="warning">Updated</Badge>;
 }
 
 function FileTypeIcon({ filepath }: { filepath: string }) {
@@ -131,14 +55,14 @@ function FileTypeIcon({ filepath }: { filepath: string }) {
   else if (filepath.startsWith('overrides/resourcepacks/')) Icon = Image;
   else if (filepath.startsWith('overrides/shaderpacks/')) Icon = Box;
   else if (filepath.startsWith('overrides/scripts/')) Icon = Code;
-  return <Icon size={12} style={{ color: '#8b949e' }} className="flex-shrink-0" />;
+  return <Icon size={12} className="text-muted-foreground flex-shrink-0" />;
 }
 
 function ConfigFileRow({ file }: { file: CommitFileEntry }) {
   return (
     <div className="flex items-center gap-1.5 min-w-0">
       <StatusDot status={file.status} />
-      <span className="text-xs font-mono truncate flex-1" style={{ color: '#8b949e' }}>
+      <span className="text-xs font-mono truncate flex-1 text-muted-foreground">
         {file.path}
       </span>
     </div>
@@ -149,16 +73,18 @@ function ConfigFileRow({ file }: { file: CommitFileEntry }) {
 
 const MAX_SUMMARY_ICONS = 5;
 
-interface Props { commit: CommitCard }
+interface Props {
+  commit: CommitCard;
+  /** Absolute date/time instead of relative time (history page). */
+  fullDate?: boolean;
+}
 
-export default function ActivityCard({ commit }: Props) {
+export default function ActivityCard({ commit, fullDate = false }: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [localChanges, setLocalChanges] = useState<CommitChanges | null>(null);
-  const [modIcons, setModIcons] = useState<Record<string, string | null>>({});
   const [fetchLoading, setFetchLoading] = useState(false);
   const fetchAttempted = useRef(false);
-  const iconsFetched = useRef(false);
 
   const changes: CommitChanges | null = commit.changes ?? localChanges;
   const isLoaded = commit.detailsLoaded || localChanges !== null;
@@ -198,30 +124,11 @@ export default function ActivityCard({ commit }: Props) {
       }
 
       setLocalChanges(changes);
-
-      if (changes.mods.length > 0) {
-        const slugs = changes.mods.map(m => m.slug).filter(Boolean);
-        try {
-          const icons = await window.electron.modrinth.getIcons(slugs);
-          setModIcons(prev => ({ ...prev, ...icons }));
-        } catch {}
-      }
     } catch {
       setLocalChanges({ mods: [], otherFiles: [] });
     }
     setFetchLoading(false);
   };
-
-  // Fetch mod icons when commit data is pre-loaded from parent
-  useEffect(() => {
-    if (!iconsFetched.current && commit.changes?.mods.length) {
-      iconsFetched.current = true;
-      const slugs = commit.changes.mods.map(m => m.slug).filter(Boolean);
-      window.electron.modrinth.getIcons(slugs).then(icons => {
-        setModIcons(prev => ({ ...prev, ...icons }));
-      }).catch(() => {});
-    }
-  }, [commit.changes]);
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-noclick]')) return;
@@ -279,14 +186,9 @@ export default function ActivityCard({ commit }: Props) {
 
   return (
     <div
-      className="rounded-[12px] cursor-pointer group"
-      style={{ background: '#323234', border: '1px solid rgba(255,255,255,0.06)', transition: 'background 120ms ease' }}
+      className="rounded-[12px] cursor-pointer group bg-card border border-line/6 hover:bg-line/5 transition-colors"
       onClick={handleCardClick}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLDivElement).style.background = '#3a3a3c';
-        triggerLoad();
-      }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#323234'; }}
+      onMouseEnter={triggerLoad}
     >
       {/* Always-visible header */}
       <div className="p-4">
@@ -301,12 +203,14 @@ export default function ActivityCard({ commit }: Props) {
           <div className="flex-1 min-w-0">
             {/* Author + timestamp */}
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-white text-sm font-medium">{commit.author.login}</span>
-              <span className="text-xs" style={{ color: '#8b949e' }}>{timeAgo(commit.date)}</span>
+              <span className="text-foreground text-sm font-medium">{commit.author.login}</span>
+              <span className="text-xs text-muted-foreground">
+                {fullDate ? new Date(commit.date).toLocaleString() : timeAgo(commit.date)}
+              </span>
             </div>
 
             {/* Commit message */}
-            <p className="text-sm truncate" style={{ color: '#C9D1D9', marginBottom: (isLoaded || fetchLoading) ? 8 : 0 }}>
+            <p className="text-sm truncate text-foreground" style={{ marginBottom: (isLoaded || fetchLoading) ? 8 : 0 }}>
               {commit.message}
             </p>
 
@@ -315,11 +219,18 @@ export default function ActivityCard({ commit }: Props) {
               <div className="flex items-center gap-2 flex-wrap">
                 {shownIcons.length > 0 && (
                   <div className="flex items-center gap-1">
-                    {shownIcons.map((mod, i) => <SmallModIcon key={i} mod={mod} iconUrl={modIcons[mod.slug]} />)}
+                    {shownIcons.map(mod => (
+                      <ModIconLazy
+                        key={mod.slug}
+                        slug={mod.slug}
+                        name={mod.name}
+                        size="sm"
+                        className={`border-2 ${statusRingClass(mod.status)}`}
+                      />
+                    ))}
                     {overflowCount > 0 && (
                       <div
-                        className="flex items-center justify-center flex-shrink-0 font-medium"
-                        style={{ width: 24, height: 24, borderRadius: '50%', background: '#3a3a3c', color: '#8b949e', fontSize: 9 }}
+                        className="flex items-center justify-center flex-shrink-0 font-medium rounded-full bg-line/10 text-muted-foreground w-6 h-6 text-[9px]"
                       >
                         +{overflowCount}
                       </div>
@@ -327,14 +238,14 @@ export default function ActivityCard({ commit }: Props) {
                   </div>
                 )}
                 {summaryText && (
-                  <span className="text-xs" style={{ color: '#8b949e' }}>{summaryText}</span>
+                  <span className="text-xs text-muted-foreground">{summaryText}</span>
                 )}
               </div>
             )}
 
             {/* Loading indicator (collapsed) */}
             {!isExpanded && !isLoaded && fetchLoading && (
-              <div className="flex items-center gap-1.5" style={{ color: '#8b949e' }}>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Loader2 size={11} className="animate-spin" />
                 <span className="text-xs">Loading…</span>
               </div>
@@ -349,10 +260,10 @@ export default function ActivityCard({ commit }: Props) {
               title="Open on GitHub"
               onClick={e => { e.stopPropagation(); window.electron.app.openExternal(commit.url); }}
             >
-              <ExternalLink size={13} style={{ color: '#8b949e' }} />
+              <ExternalLink size={13} className="text-muted" />
             </button>
             <div style={{ transition: 'transform 300ms ease', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-              <ChevronRight size={14} style={{ color: '#8b949e' }} />
+              <ChevronRight size={14} className="text-muted" />
             </div>
           </div>
         </div>
@@ -368,11 +279,11 @@ export default function ActivityCard({ commit }: Props) {
       >
         <div style={{ overflow: 'hidden' }}>
           <div className="px-4 pb-4">
-            <div className="mb-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+            <div className="mb-3 border-t border-line/6" />
 
             {/* Loading spinner (expanded, not yet loaded) */}
             {!isLoaded && fetchLoading && (
-              <div className="flex items-center gap-1.5" style={{ color: '#8b949e' }}>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Loader2 size={11} className="animate-spin" />
                 <span className="text-xs">Loading changes…</span>
               </div>
@@ -380,7 +291,7 @@ export default function ActivityCard({ commit }: Props) {
 
             {/* Placeholder before first load attempt */}
             {!isLoaded && !fetchLoading && (
-              <p className="text-xs" style={{ color: '#4D5461' }}>Loading…</p>
+              <p className="text-xs text-muted-foreground">Loading…</p>
             )}
 
             {/* Full details */}
@@ -403,8 +314,8 @@ export default function ActivityCard({ commit }: Props) {
                             style={{ cursor: hasConfigs ? 'pointer' : 'default' }}
                             onClick={e => hasConfigs && toggleMod(mod.slug, e)}
                           >
-                            <ModIcon iconUrl={modIcons[mod.slug] ?? mod.iconUrl} name={mod.name} />
-                            <span className="text-sm font-medium text-white flex-1 min-w-0 truncate">
+                            <ModIconLazy slug={mod.slug} name={mod.name} size="md" />
+                            <span className="text-sm font-medium text-foreground flex-1 min-w-0 truncate">
                               {mod.name}
                             </span>
                             {!mod.phantom && (
@@ -416,8 +327,8 @@ export default function ActivityCard({ commit }: Props) {
                             )}
                             {hasConfigs && (
                               isModExpanded
-                                ? <ChevronDown size={12} style={{ color: '#8b949e' }} className="flex-shrink-0" />
-                                : <ChevronRight size={12} style={{ color: '#8b949e' }} className="flex-shrink-0" />
+                                ? <ChevronDown size={12} className="text-muted flex-shrink-0" />
+                                : <ChevronRight size={12} className="text-muted flex-shrink-0" />
                             )}
                           </div>
 
@@ -429,7 +340,7 @@ export default function ActivityCard({ commit }: Props) {
                               style={{ paddingLeft: 36, cursor: 'pointer' }}
                               onClick={e => toggleMod(mod.slug, e)}
                             >
-                              <span className="text-xs" style={{ color: '#8b949e' }}>
+                              <span className="text-xs text-muted-foreground">
                                 {configs.length} config file{configs.length !== 1 ? 's' : ''}
                               </span>
                             </div>
@@ -453,7 +364,7 @@ export default function ActivityCard({ commit }: Props) {
 
                 {/* Divider */}
                 {displayMods.length > 0 && ungroupedFiles.length > 0 && (
-                  <div className="my-2" style={{ borderTop: '1px solid #21262d' }} />
+                  <div className="my-2 border-t border-line-strong" />
                 )}
 
                 {/* Other files */}
@@ -463,7 +374,7 @@ export default function ActivityCard({ commit }: Props) {
                       <div key={i} className="flex items-center gap-1.5 min-w-0">
                         <StatusDot status={file.status} />
                         <FileTypeIcon filepath={file.path} />
-                        <span className="text-xs font-mono truncate flex-1" style={{ color: '#8b949e' }}>
+                        <span className="text-xs font-mono truncate flex-1 text-muted-foreground">
                           {file.path}
                         </span>
                       </div>
@@ -473,7 +384,7 @@ export default function ActivityCard({ commit }: Props) {
 
                 {/* Nothing to show */}
                 {displayMods.length === 0 && ungroupedFiles.length === 0 && (
-                  <p className="text-xs" style={{ color: '#4D5461' }}>No file changes recorded</p>
+                  <p className="text-xs text-muted-foreground">No file changes recorded</p>
                 )}
               </div>
             )}
