@@ -13,6 +13,9 @@ import type {
 
 type AuthCb = () => { username?: string; password?: string } | Promise<{ username?: string; password?: string }>;
 
+// The git empty tree — isomorphic-git uses it to represent "no commits yet".
+const EMPTY_TREE_OID = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
 function makeOnAuth(auth?: AuthCb) {
   return auth
     ? {
@@ -116,8 +119,13 @@ export class IsomorphicGitProvider implements GitProvider {
     message: string,
     options?: { author?: { name: string; email: string } },
   ): Promise<string> {
-    const author = options?.author ?? { name: 'orbmodpack', email: 'orbmodpack@users.noreply.github.com' };
-    return git.commit({ fs, dir, message, author, committer: author });
+    if (options?.author) {
+      return git.commit({ fs, dir, message, author: options.author, committer: options.author });
+    }
+    // No author passed — let isomorphic-git fall back to the repo's `user.name` /
+    // `user.email` config (set by ensureGitIdentity) so commits are attributed to
+    // the authenticated GitHub user instead of a hardcoded placeholder.
+    return git.commit({ fs, dir, message });
   }
 
   async currentBranch(dir: string): Promise<string> {
@@ -225,6 +233,19 @@ export class IsomorphicGitProvider implements GitProvider {
     return (await Promise.resolve(files)).filter(Boolean) as string[];
   }
 
+  async diffLastCommit(dir: string, pathPrefix?: string): Promise<string[]> {
+    let commits: CommitDescription[];
+    try {
+      commits = await this.log(dir, { depth: 2 });
+    } catch (err) {
+      if (err instanceof git.Errors.NotFoundError) return [];
+      throw err;
+    }
+    if (commits.length === 0) return [];
+    const parentOid = commits[1]?.oid ?? EMPTY_TREE_OID;
+    return this.diffRefs(dir, parentOid, commits[0].oid, pathPrefix);
+  }
+
   async revertLastCommit(dir: string): Promise<string> {
     const commits = await git.log({ fs, dir, depth: 2 });
     if (commits.length < 2) throw new Error('No commits to undo (only one commit in history)');
@@ -266,12 +287,16 @@ export class IsomorphicGitProvider implements GitProvider {
   }
 
   async resetHard(dir: string, ref: string): Promise<void> {
-    await git.checkout({
-      fs,
-      dir,
-      ref,
-      force: true,
-    });
+    // `git.checkout({ ref: 'origin/main' })` resolves to the remote-tracking ref
+    // `refs/remotes/origin/main`, which leaves HEAD *detached*. Commits made after
+    // that land on HEAD instead of the local branch, and `git.push({ ref: 'main' })`
+    // resolves the never-advanced branch ref — every push silently no-ops while
+    // still reporting success. This mirrors `git reset --hard origin/main`: move the
+    // local branch to the target commit first, then hard-checkout so HEAD is re-attached.
+    const oid = await git.resolveRef({ fs, dir, ref });
+    const branch = ref.match(/^(?:refs\/remotes\/)?[^/]+\/(.+)$/)?.[1] ?? ref.replace(/^refs\/heads\//, '');
+    await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: oid, force: true });
+    await git.checkout({ fs, dir, ref: branch, force: true });
   }
 
   async setRemoteUrl(dir: string, remote: string, url: string): Promise<void> {

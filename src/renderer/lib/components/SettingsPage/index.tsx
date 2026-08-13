@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Send, Loader2, ArrowLeft, FolderOpen, Shield, History, Server, RotateCcw } from 'lucide-react';
+import {
+  Send, Loader2, ArrowLeft, FolderOpen, Server, Moon, Sun,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import ProfileSelector from '../SettingsModal/ProfileSelector';
 import ConfirmDialog from '../ConfirmDialog';
 import { getCachedSetting, setCachedSetting } from '@/lib/utils/settingsCache';
+import { useTheme, THEMES } from '@/lib/theme/ThemeProvider';
 import type { PromoteDiffEntry, ProfileMode } from '@/lib/types';
+import Button from '../base/Button';
+import Input, { LABEL_CLASSES } from '../base/Input';
+import IconButton from '../base/IconButton';
+import Toggle from '../base/Toggle';
 
 interface Props {
   onBack: () => void;
@@ -24,15 +31,12 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
   const [readOnlyEnabled, setReadOnlyEnabled] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
   const [profileMode, setProfileMode] = useState<ProfileMode>('dev');
-  const [lastSnapshotTime, setLastSnapshotTime] = useState<string | null>(null);
-  const [isSnapshotting, setIsSnapshotting] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
   const [promoteDiff, setPromoteDiff] = useState<PromoteDiffEntry[] | null>(null);
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
-  const [pendingSnapshotInfo, setPendingSnapshotInfo] = useState<string | null>(null);
   const [pendingPromotePreview, setPendingPromotePreview] = useState<PromoteDiffEntry[] | null | undefined>(undefined);
+
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     setModpackRoot(getCachedSetting('modpackRoot'));
@@ -45,11 +49,6 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
     window.electron.settings.getReadOnly().then(setReadOnlyEnabled);
     window.electron.settings.getAutoSyncOnLaunch().then(setAutoSyncEnabled);
     window.electron.profile.getMode().then(setProfileMode);
-    window.electron.profile.listSnapshots().then(r => {
-      if (r.success && r.data && r.data.length > 0) {
-        setLastSnapshotTime(r.data[r.data.length - 1].timestamp);
-      }
-    });
   }, []);
 
   const handleProfileSelected = (path: string) => {
@@ -74,44 +73,6 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
     setAutoSyncEnabled(next);
     await window.electron.settings.setAutoSyncOnLaunch(next);
     toast(next ? 'Auto-sync on launch enabled' : 'Auto-sync on launch disabled');
-  };
-
-  const handleTakeSnapshot = async () => {
-    setIsSnapshotting(true);
-    const r = await window.electron.profile.snapshot();
-    setIsSnapshotting(false);
-    if (r.success && r.data) {
-      setLastSnapshotTime(r.data.timestamp);
-      toast.success('Profile snapshot saved');
-    } else {
-      toast.error(`Snapshot failed: ${r.error}`);
-    }
-  };
-
-  const handleRestoreSnapshot = async () => {
-    const snapshots = await window.electron.profile.listSnapshots();
-    if (!snapshots.success || !snapshots.data || snapshots.data.length === 0) {
-      toast.error('No snapshots to restore');
-      return;
-    }
-    const latest = snapshots.data[snapshots.data.length - 1];
-    setPendingSnapshotInfo(new Date(latest.timestamp).toLocaleString());
-    setShowRestoreConfirm(true);
-  };
-
-  const handleConfirmRestore = async () => {
-    setShowRestoreConfirm(false);
-    const snapshots = await window.electron.profile.listSnapshots();
-    if (!snapshots.success || !snapshots.data || snapshots.data.length === 0) return;
-    const latest = snapshots.data[snapshots.data.length - 1];
-    setIsRestoring(true);
-    const r = await window.electron.profile.restore(latest.id);
-    setIsRestoring(false);
-    if (r.success) {
-      toast.success('Profile restored from snapshot');
-    } else {
-      toast.error(`Restore failed: ${r.error}`);
-    }
   };
 
   const handlePromote = async () => {
@@ -166,36 +127,17 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
     onSaved();
   };
 
-  const inputClass =
-    'w-full rounded-[8px] px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#0890FE] transition-all';
-  const inputStyle = { background: '#1E1E1E', border: '1px solid rgba(255,255,255,0.08)' } as const;
-  const labelClass = 'text-[#A9A9AB] text-xs font-medium mb-1.5 block';
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-line/6 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
-            aria-label="Back to Home"
-          >
-            <ArrowLeft size={15} className="text-[#A9A9AB]" />
-          </button>
-          <h2 className="text-white font-semibold text-base">Settings</h2>
+          <IconButton icon={ArrowLeft} label="Back to Home" onClick={onBack} />
+          <h2 className="text-foreground font-semibold text-base">Settings</h2>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: '#0890FE' }}
-          onMouseEnter={e => { if (!isSaving) e.currentTarget.style.background = '#1a9dff'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#0890FE'; }}
-        >
-          {isSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+        <Button variant="primary" loading={isSaving} onClick={handleSave}>
           {isSaving ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </div>
 
       {/* Body */}
@@ -203,199 +145,131 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
         <div className="max-w-xl flex flex-col gap-6">
           {/* Modpack Root */}
           <div>
-            <label className={labelClass}>
-              Modpack Root Directory <span className="text-[#E24729]">*</span>
+            <label className={LABEL_CLASSES}>
+              Modpack Root Directory <span className="text-brand">*</span>
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
+            <p className="text-muted text-xs mb-2">
               Your Minecraft profile directory that contains a{' '}
-              <code className="bg-white/10 px-1 rounded">mods/</code> subfolder.
+              <code className="bg-line/10 px-1 rounded">mods/</code> subfolder.
             </p>
             <ProfileSelector selectedPath={modpackRoot} onSelected={handleProfileSelected} />
           </div>
 
           {/* Export Directory */}
           <div>
-            <label className={labelClass}>
-              Export Directory <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            <label className={LABEL_CLASSES}>
+              Export Directory <span className="text-muted font-normal">(optional)</span>
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
-              Where <code className="bg-white/10 px-1 rounded">.mrpack</code> files are saved.
-              Defaults to <code className="bg-white/10 px-1 rounded">modpack_root/Modpack Export/</code>.
+            <p className="text-muted text-xs mb-2">
+              Where <code className="bg-line/10 px-1 rounded">.mrpack</code> files are saved.
+              Defaults to <code className="bg-line/10 px-1 rounded">modpack_root/Modpack Export/</code>.
             </p>
             <div className="flex gap-2">
-              <input
-                value={exportDir}
-                onChange={e => { setExportDir(e.target.value); setHasChanges(true); }}
-                placeholder="Leave blank for default"
-                className={`${inputClass} flex-1`}
-                style={inputStyle}
-              />
-              <button
+              <div className="flex-1">
+                <Input
+                  value={exportDir}
+                  onChange={e => { setExportDir(e.target.value); setHasChanges(true); }}
+                  placeholder="Leave blank for default"
+                />
+              </div>
+              <IconButton
+                icon={FolderOpen}
+                label="Browse"
+                variant="secondary"
+                sizeClass="px-3 py-2"
                 onClick={selectExportDir}
-                className="px-3 py-2 rounded-[8px] hover:bg-white/10 transition-colors"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-                aria-label="Browse"
-              >
-                <FolderOpen size={15} className="text-[#A9A9AB]" />
-              </button>
+              />
             </div>
           </div>
 
-          <div className="h-px bg-white/[0.06]" />
+          <div className="h-px bg-line/6" />
 
           {/* Read-only mode */}
           <div>
-            <label className={labelClass}>
-              Read-only Mode <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            <label className={LABEL_CLASSES}>
+              Read-only Mode <span className="text-muted font-normal">(optional)</span>
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
+            <p className="text-muted text-xs mb-2">
               When enabled, pull and push operations are blocked. Useful when you want to
               inspect your modpack without risking accidental changes.
             </p>
-            <button
-              onClick={handleReadOnlyToggle}
-              className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-                readOnlyEnabled ? 'text-[#20AC64]' : 'text-[#A9A9AB]'
-              }`}
-              style={{
-                background: readOnlyEnabled ? 'rgba(32,172,100,0.1)' : 'rgba(255,255,255,0.06)',
-                border: `1px solid ${readOnlyEnabled ? 'rgba(32,172,100,0.35)' : 'rgba(255,255,255,0.08)'}`,
-              }}
-            >
-              <div
-                className="w-8 h-4 rounded-full transition-colors relative"
-                style={{
-                  background: readOnlyEnabled ? '#20AC64' : 'rgba(255,255,255,0.15)',
-                }}
-              >
-                <div
-                  className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all shadow-sm"
-                  style={{ left: readOnlyEnabled ? '18px' : '3px' }}
-                />
-              </div>
-              {readOnlyEnabled ? 'Read-only is ON' : 'Read-only is OFF'}
-            </button>
+            <div className="flex items-center gap-3">
+              <Toggle checked={readOnlyEnabled} onChange={handleReadOnlyToggle} label="Read-only mode" />
+              <span className={`text-sm font-medium ${readOnlyEnabled ? 'text-success' : 'text-muted'}`}>
+                {readOnlyEnabled ? 'Read-only is ON' : 'Read-only is OFF'}
+              </span>
+            </div>
           </div>
 
-          <div className="h-px bg-white/[0.06]" />
+          <div className="h-px bg-line/6" />
 
           {/* Auto-sync on launch */}
           <div>
-            <label className={labelClass}>
-              Auto-sync on Launch <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            <label className={LABEL_CLASSES}>
+              Auto-sync on Launch <span className="text-muted font-normal">(optional)</span>
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
+            <p className="text-muted text-xs mb-2">
               When enabled, the app automatically pulls the latest modpack after you log in.
               Off by default — auto-sync can overwrite local changes you haven't pushed yet,
-              so use <span className="text-white/80">Pull Latest</span> manually unless you're sure.
+              so use <span className="text-foreground/80">Pull Latest</span> manually unless you're sure.
             </p>
-            <button
-              onClick={handleAutoSyncToggle}
-              className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-                autoSyncEnabled ? 'text-[#20AC64]' : 'text-[#A9A9AB]'
-              }`}
-              style={{
-                background: autoSyncEnabled ? 'rgba(32,172,100,0.1)' : 'rgba(255,255,255,0.06)',
-                border: `1px solid ${autoSyncEnabled ? 'rgba(32,172,100,0.35)' : 'rgba(255,255,255,0.08)'}`,
-              }}
-            >
-              <div
-                className="w-8 h-4 rounded-full transition-colors relative"
-                style={{
-                  background: autoSyncEnabled ? '#20AC64' : 'rgba(255,255,255,0.15)',
-                }}
-              >
-                <div
-                  className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all shadow-sm"
-                  style={{ left: autoSyncEnabled ? '18px' : '3px' }}
-                />
-              </div>
-              {autoSyncEnabled ? 'Auto-sync is ON' : 'Auto-sync is OFF'}
-            </button>
-          </div>
-
-          <div className="h-px bg-white/[0.06]" />
-
-          {/* Profile Protection */}
-          <div>
-            <label className={labelClass}>
-              Profile Protection <span className="text-[#A9A9AB] font-normal">(optional)</span>
-            </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
-              Protect your modpack profile from accidental changes. Snapshots let you restore
-              your mods, configs, and resource packs to a known state.
-            </p>
-            <div className="flex items-center gap-1.5 mb-2">
-              <Shield size={12} className={lastSnapshotTime ? 'text-[#20AC64]' : 'text-[#A9A9AB]'} />
-              <span className="text-[#A9A9AB] text-xs">
-                {lastSnapshotTime ? `Snapshotted ${new Date(lastSnapshotTime).toLocaleString()}` : 'No snapshots yet'}
+            <div className="flex items-center gap-3">
+              <Toggle checked={autoSyncEnabled} onChange={handleAutoSyncToggle} label="Auto-sync on launch" />
+              <span className={`text-sm font-medium ${autoSyncEnabled ? 'text-success' : 'text-muted'}`}>
+                {autoSyncEnabled ? 'Auto-sync is ON' : 'Auto-sync is OFF'}
               </span>
             </div>
+          </div>
+
+          <div className="h-px bg-line/6" />
+
+          {/* Production workspace */}
+          <div>
+            <label className={LABEL_CLASSES}>
+              Production Workspace <span className="text-muted font-normal">(optional)</span>
+            </label>
+            <p className="text-muted text-xs mb-2">
+              Copies your mods, configs, and override files from the development profile to
+              the production workspace. Team members pulling from production receive these changes.
+            </p>
             <div className="flex gap-2">
-              <button
-                onClick={handleTakeSnapshot}
-                disabled={isSnapshotting}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-medium transition-all disabled:opacity-50"
-                style={{ color: '#20AC64', border: '1px solid rgba(32,172,100,0.35)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(32,172,100,0.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                {isSnapshotting ? <Loader2 size={11} className="animate-spin" /> : <Shield size={11} />}
-                {isSnapshotting ? 'Saving...' : 'Snapshot'}
-              </button>
-              <button
-                onClick={handleRestoreSnapshot}
-                disabled={isRestoring || !lastSnapshotTime}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-medium transition-all disabled:opacity-40"
-                style={{ color: '#FFA809', border: '1px solid rgba(255,168,9,0.35)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,168,9,0.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                {isRestoring ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
-                {isRestoring ? 'Restoring...' : 'Restore'}
-              </button>
               {profileMode === 'dev' && (
-                <button
+                <Button
+                  variant="soft"
+                  size="sm"
+                  icon={Server}
+                  loading={isPromoting}
                   onClick={handlePromote}
-                  disabled={isPromoting}
-                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-medium transition-all disabled:opacity-50"
-                  style={{ color: '#0890FE', border: '1px solid rgba(8,144,254,0.35)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(8,144,254,0.08)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {isPromoting ? <Loader2 size={11} className="animate-spin" /> : <Server size={11} />}
                   {isPromoting ? 'Promoting...' : 'Promote'}
-                </button>
+                </Button>
               )}
             </div>
           </div>
 
-          <div className="h-px bg-white/[0.06]" />
+          <div className="h-px bg-line/6" />
 
           {/* Discord webhook */}
           <div>
-            <label className={labelClass}>
-              Discord Webhook <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            <label className={LABEL_CLASSES}>
+              Discord Webhook <span className="text-muted font-normal">(optional)</span>
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
+            <p className="text-muted text-xs mb-2">
               Receive a notification in Discord after every successful push.
               Create one in your server's channel settings under Integrations.
             </p>
             <div className="flex gap-2">
-              <input
-                value={discordWebhook}
-                onChange={e => { setDiscordWebhook(e.target.value); setHasChanges(true); }}
-                placeholder="https://discord.com/api/webhooks/…"
-                className={`${inputClass} flex-1`}
-                style={inputStyle}
-              />
+              <div className="flex-1">
+                <Input
+                  value={discordWebhook}
+                  onChange={e => { setDiscordWebhook(e.target.value); setHasChanges(true); }}
+                  placeholder="https://discord.com/api/webhooks/…"
+                />
+              </div>
               <button
                 onClick={handleTestWebhook}
                 disabled={isTestingWebhook || !discordWebhook.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                style={{ background: 'rgba(88,166,255,0.12)', color: '#58a6ff', border: '1px solid rgba(88,166,255,0.2)' }}
-                onMouseEnter={e => { if (discordWebhook.trim() && !isTestingWebhook) (e.currentTarget.style.background = 'rgba(88,166,255,0.2)'); }}
-                onMouseLeave={e => { (e.currentTarget.style.background = 'rgba(88,166,255,0.12)'); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 bg-link/10 text-link border border-link/25 hover:bg-link/20"
                 title="Send a test message"
               >
                 {isTestingWebhook ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
@@ -404,77 +278,84 @@ export default function SettingsPage({ onBack, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="h-px bg-white/[0.06]" />
+          <div className="h-px bg-line/6" />
 
           {/* Modrinth Project ID */}
           <div>
-            <label className={labelClass}>
-              Modrinth Project ID <span className="text-[#A9A9AB] font-normal">(optional)</span>
+            <label className={LABEL_CLASSES}>
+              Modrinth Project ID <span className="text-muted font-normal">(optional)</span>
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
+            <p className="text-muted text-xs mb-2">
               Used to fetch the latest published release and suggest the next version when exporting.
               Find it in your Modrinth project settings.
             </p>
-            <input
+            <Input
               value={modrinthProjectId}
               onChange={e => { setModrinthProjectId(e.target.value); setHasChanges(true); }}
               placeholder="O5wGsyGR"
-              className={inputClass}
-              style={inputStyle}
               spellCheck={false}
             />
           </div>
 
-          <div className="h-px bg-white/[0.06]" />
+          <div className="h-px bg-line/6" />
 
           {/* Minecraft / Fabric Loader versions */}
           <div>
-            <label className={labelClass}>
+            <label className={LABEL_CLASSES}>
               Minecraft &amp; Fabric Loader Versions
             </label>
-            <p className="text-[#A9A9AB] text-xs mb-2">
-              Written to the exported <code className="bg-white/10 px-1 rounded">modrinth.index.json</code>'s{' '}
-              <code className="bg-white/10 px-1 rounded">dependencies</code> field, required by the Modrinth App.
+            <p className="text-muted text-xs mb-2">
+              Written to the exported <code className="bg-line/10 px-1 rounded">modrinth.index.json</code>'s{' '}
+              <code className="bg-line/10 px-1 rounded">dependencies</code> field, required by the Modrinth App.
               Update these when the modpack upgrades Minecraft or Fabric.
             </p>
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="text-[#A9A9AB] text-[11px] mb-1 block">Minecraft version</label>
-                <input
+                <Input
+                  label="Minecraft version"
                   value={minecraftVersion}
                   onChange={e => { setMinecraftVersion(e.target.value); setHasChanges(true); }}
                   placeholder="1.21.1"
-                  className={inputClass}
-                  style={inputStyle}
                   spellCheck={false}
                 />
               </div>
               <div className="flex-1">
-                <label className="text-[#A9A9AB] text-[11px] mb-1 block">Fabric Loader version</label>
-                <input
+                <Input
+                  label="Fabric Loader version"
                   value={fabricLoaderVersion}
                   onChange={e => { setFabricLoaderVersion(e.target.value); setHasChanges(true); }}
                   placeholder="0.16.9"
-                  className={inputClass}
-                  style={inputStyle}
                   spellCheck={false}
                 />
               </div>
             </div>
           </div>
+
+          <div className="h-px bg-line/6" />
+
+          {/* Theme */}
+          <div>
+            <label className={LABEL_CLASSES}>Theme</label>
+            <p className="text-muted text-xs mb-2">
+              Switch between the dark and light appearance. Applied instantly and remembered across launches.
+            </p>
+            <div className="flex gap-2">
+              {THEMES.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium capitalize border transition-colors ${
+                    theme === t ? 'bg-primary/10 text-primary border-primary/40' : 'text-muted border-line/8 hover:bg-line/10'
+                  }`}
+                >
+                  {t === 'dark' ? <Moon size={12} /> : <Sun size={12} />}
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-
-      <ConfirmDialog
-        open={showRestoreConfirm}
-        title="Restore Snapshot"
-        description="This will revert all profile files to the selected snapshot. Any changes made since this snapshot will be lost. It is recommended to take a fresh snapshot before restoring."
-        details={pendingSnapshotInfo ? `Snapshot from ${pendingSnapshotInfo}` : null}
-        confirmLabel="Restore"
-        variant="warning"
-        onConfirm={handleConfirmRestore}
-        onCancel={() => setShowRestoreConfirm(false)}
-      />
 
       <ConfirmDialog
         open={showPromoteConfirm}

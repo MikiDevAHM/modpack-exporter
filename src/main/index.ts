@@ -18,22 +18,19 @@ import {
   getToken,
   DeviceCodeInfo,
 } from './githubAuth';
-import { syncMods } from './sync-mods';
+import { validateManifest } from './versions';
 import {
-  loadVersionHistory,
-  appendVersionRecord,
-  validateManifest,
-} from './versions';
-import {
-  takeSnapshot,
-  listSnapshots,
-  restoreSnapshot,
   getProfileMode,
   setProfileMode,
   promoteToProduction,
   productionWorkspacePath,
   type ProfileMode,
 } from './profile';
+import { initMainLogger, registerLogIpc } from './logger';
+
+// Must precede any console.* call so every main-process log reaches LogsPage.
+initMainLogger();
+registerLogIpc();
 
 const gitProvider = new IsomorphicGitProvider();
 
@@ -1467,10 +1464,6 @@ function registerIpc() {
     const root = store.get('modpackRoot');
     if (!root) return { success: false, error: 'No modpack root configured' };
 
-    const userDataPath = app.getPath('userData');
-    const pullMode = getProfileMode(userDataPath);
-    takeSnapshot(userDataPath, root, pullMode);
-
     const versionsDir = getVersionsRepoDir();
     const modsDir = path.join(root, 'mods');
     const token = getToken();
@@ -2109,10 +2102,6 @@ function registerIpc() {
     const root = store.get('modpackRoot');
     if (!root) return { success: false, error: 'No modpack root configured' };
 
-    const userDataPath = app.getPath('userData');
-    const pushMode = getProfileMode(userDataPath);
-    takeSnapshot(userDataPath, root, pushMode);
-
     const modsDir = path.join(root, 'mods');
     if (!fs.existsSync(modsDir)) {
       return { success: false, error: `mods/ folder not found at: ${modsDir}` };
@@ -2521,7 +2510,7 @@ function registerIpc() {
 
         // 8. Changed Files (non-mod override files touched in this commit)
         try {
-          const diff = await gitProvider.diffRefs(versionsDir, 'HEAD~1', 'HEAD', 'overrides/');
+          const diff = await gitProvider.diffLastCommit(versionsDir, 'overrides/');
           const stdout = diff.join('\n');
           const fileList = stdout.trim().split('\n').filter(Boolean).filter(f => !f.startsWith('overrides/mods/'));
           if (fileList.length > 0) {
@@ -3720,118 +3709,67 @@ function registerIpc() {
   });
 
   // Sync mods
-  ipcMain.handle('python:sync-mods', async () => {
-    const root = store.get('modpackRoot') || DEV_APP_ROOT;
-    try {
-      const result = await syncMods(root, null, false);
-      return { success: true, data: result };
-    } catch (e: any) { return { success: false, error: e.message }; }
-  });
 
-  // Modrinth icon cache
-  ipcMain.handle('modrinth:get-icons', async (_e, slugs: string[]) => {
-    const cacheDir = path.join(app.getPath('userData'), 'cache', 'mod-icons');
-    await fs.promises.mkdir(cacheDir, { recursive: true });
+  // Modrinth icon cache — disk (<userData>/cache/mod-icons/<slug>.png) plus an
+  // in-memory layer (slug → data URL) so repeat lookups skip re-read/re-encode,
+  // and an in-flight dedupe so N concurrent requests for one slug share a fetch.
+  const iconMemoryCache = new Map<string, string | null>();
+  const iconInflight = new Map<string, Promise<string | null>>();
 
-    const results: Record<string, string | null> = {};
-    const UA = { 'User-Agent': 'ORB-Modpack-Exporter/1.0' };
+  async function resolveModIcon(slug: string): Promise<string | null> {
+    if (iconMemoryCache.has(slug)) return iconMemoryCache.get(slug)!;
+    const pending = iconInflight.get(slug);
+    if (pending) return pending;
 
-    for (const slug of slugs) {
-      if (results[slug] !== undefined) continue;
+    const task = (async (): Promise<string | null> => {
+      const cacheDir = path.join(app.getPath('userData'), 'cache', 'mod-icons');
+      await fs.promises.mkdir(cacheDir, { recursive: true });
+      const UA = { 'User-Agent': 'ORB-Modpack-Exporter/1.0' };
       try {
         const cachedPath = path.join(cacheDir, `${slug}.png`);
         if (fs.existsSync(cachedPath)) {
           const data = fs.readFileSync(cachedPath);
-          results[slug] = `data:image/png;base64,${data.toString('base64')}`;
-          continue;
+          return `data:image/png;base64,${data.toString('base64')}`;
         }
 
         const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(slug)}`, {
           headers: UA, signal: AbortSignal.timeout(5000),
         });
-        if (!res.ok) { results[slug] = null; continue; }
+        if (!res.ok) return null;
 
         const project: any = await res.json();
         const iconUrl: string | undefined = project.icon_url;
-        if (!iconUrl) { results[slug] = null; continue; }
+        if (!iconUrl) return null;
 
         const iconRes = await fetch(iconUrl, { signal: AbortSignal.timeout(5000) });
-        if (!iconRes.ok) { results[slug] = null; continue; }
+        if (!iconRes.ok) return null;
 
         const buf = Buffer.from(await iconRes.arrayBuffer());
         fs.writeFileSync(cachedPath, buf);
-        results[slug] = `data:image/png;base64,${buf.toString('base64')}`;
+        return `data:image/png;base64,${buf.toString('base64')}`;
       } catch {
-        results[slug] = null;
+        return null;
       }
-    }
+    })();
 
+    iconInflight.set(slug, task);
+    try {
+      const url = await task;
+      iconMemoryCache.set(slug, url);
+      return url;
+    } finally {
+      iconInflight.delete(slug);
+    }
+  }
+
+  ipcMain.handle('modrinth:get-icons', async (_e, slugs: string[]) => {
+    const results: Record<string, string | null> = {};
+    await Promise.all(
+      [...new Set(slugs)].map(async slug => {
+        results[slug] = await resolveModIcon(slug);
+      })
+    );
     return results;
-  });
-
-  // ── Version history ──────────────────────────────────────────────────────────
-  ipcMain.handle('versions:list', async () => {
-    const versionsDir = getVersionsRepoDir();
-    try {
-      const data = loadVersionHistory(versionsDir);
-      return { success: true, data };
-    } catch (e: any) {
-      return { success: false, error: e?.message };
-    }
-  });
-
-  ipcMain.handle('versions:rollback', async (_e, { versionId }: { versionId: string }) => {
-    const versionsDir = getVersionsRepoDir();
-    try {
-      const history = loadVersionHistory(versionsDir);
-      const target = history.find(v => v.id === versionId);
-      if (!target) return { success: false, error: 'Version not found' };
-
-      await gitProvider.fetch(versionsDir, { ...makeGitAuth() });
-
-      const changedFiles = await gitProvider.diffRefs(versionsDir, target.commitSha, 'HEAD');
-
-      for (const filepath of changedFiles) {
-        const fullPath = path.join(versionsDir, filepath);
-        try {
-          const blob = await gitProvider.readBlob(versionsDir, target.commitSha, filepath);
-          fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-          fs.writeFileSync(fullPath, Buffer.from(blob));
-        } catch {
-          if (fs.existsSync(fullPath)) {
-            fs.rmSync(fullPath, { force: true });
-          }
-        }
-      }
-
-      await gitProvider.addAll(versionsDir);
-      const revertOid = await gitProvider.commit(
-        versionsDir,
-        `Rollback to version ${target.manifestVersion}`,
-      );
-      await gitProvider.push(versionsDir, { ...makeGitAuth() });
-
-      await gitProvider.fetch(versionsDir, { ...makeGitAuth() });
-      await gitProvider.resetHard(versionsDir, 'origin/main');
-
-      return {
-        success: true,
-        message: `Rolled back to version ${target.manifestVersion} (${revertOid.substring(0, 7)})`,
-      };
-    } catch (e: any) {
-      return { success: false, error: e?.message || String(e) };
-    }
-  });
-
-  ipcMain.handle('versions:current', async () => {
-    try {
-      const versionsDir = getVersionsRepoDir();
-      const history = loadVersionHistory(versionsDir);
-      const latest = history[history.length - 1];
-      return { success: true, manifestVersion: latest?.manifestVersion ?? null };
-    } catch (e: any) {
-      return { success: false, error: e?.message };
-    }
   });
 
   // ── Profile protection ───────────────────────────────────────────────────────
@@ -3841,37 +3779,6 @@ function registerIpc() {
 
   ipcMain.handle('profile:set-mode', async (_e, { mode }: { mode: string }) => {
     setProfileMode(app.getPath('userData'), mode as ProfileMode);
-  });
-
-  ipcMain.handle('profile:snapshot', async () => {
-    const root = store.get('modpackRoot');
-    if (!root) return { success: false, error: 'Modpack root not set' };
-    const mode = getProfileMode(app.getPath('userData'));
-    try {
-      const record = takeSnapshot(app.getPath('userData'), root, mode);
-      return { success: true, data: { id: record.id, timestamp: record.timestamp, mode: record.mode, modCount: record.modCount, fileCount: record.fileCount } };
-    } catch (e: any) {
-      return { success: false, error: e?.message };
-    }
-  });
-
-  ipcMain.handle('profile:list-snapshots', () => {
-    try {
-      const records = listSnapshots(app.getPath('userData'));
-      return { success: true, data: records };
-    } catch (e: any) {
-      return { success: false, error: e?.message };
-    }
-  });
-
-  ipcMain.handle('profile:restore', async (_e, { snapshotId }: { snapshotId: string }) => {
-    const root = store.get('modpackRoot');
-    if (!root) return { success: false, error: 'Modpack root not set' };
-    try {
-      return restoreSnapshot(app.getPath('userData'), snapshotId, root);
-    } catch (e: any) {
-      return { success: false, error: e?.message };
-    }
   });
 
   ipcMain.handle('profile:promote', async () => {

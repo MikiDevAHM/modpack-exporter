@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import Modal from './base/Modal';
+import Button from './base/Button';
 
 interface Props {
   open: boolean;
@@ -13,18 +15,18 @@ interface Props {
   onCancel: () => void;
 }
 
-const COLORS = {
-  surface: '#323234',
-  border: 'rgba(255,255,255,0.08)',
-  divider: 'rgba(255,255,255,0.06)',
-  muted: '#8b949e',
-  accent: '#58a6ff',
-  danger: '#f85149',
-  warning: '#d2991d',
-  btnGreen: '#238636',
-  btnGreenHover: '#2ea043',
-  btnDanger: '#da3633',
-  btnDangerHover: '#f85149',
+/** Icon badge styling per variant (success/danger/warning). */
+const ICON_CLASSES = {
+  default: 'bg-success-strong/10 border-success-strong/30 text-success-strong',
+  danger: 'bg-danger/10 border-danger/30 text-danger',
+  warning: 'bg-warning-soft/10 border-warning-soft/30 text-warning-soft',
+} as const;
+
+/** Solid confirm button per variant. */
+const CONFIRM_CLASSES = {
+  default: 'bg-success-strong hover:opacity-90',
+  danger: 'bg-danger-strong hover:opacity-90',
+  warning: 'bg-warning-soft hover:opacity-90',
 } as const;
 
 export default function ConfirmDialog({
@@ -40,13 +42,6 @@ export default function ConfirmDialog({
 }: Props) {
   const [loading, setLoading] = useState(false);
 
-  if (!open) return null;
-
-  const accentColor =
-    variant === 'danger' ? COLORS.danger :
-    variant === 'warning' ? COLORS.warning :
-    COLORS.btnGreen;
-
   const handleConfirm = async () => {
     setLoading(true);
     try {
@@ -57,89 +52,38 @@ export default function ConfirmDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 flex items-center justify-center z-[60]"
-      style={{ background: 'rgba(0,0,0,0.75)' }}
-    >
-      <div
-        className="w-[420px] rounded-[14px] overflow-hidden shadow-2xl"
-        style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}` }}
-      >
-        {/* Icon */}
-        <div className="flex justify-center pt-6 pb-2">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center"
-            style={{
-              background:
-                variant === 'danger' ? 'rgba(248,81,73,0.12)' :
-                variant === 'warning' ? 'rgba(210,153,29,0.12)' :
-                'rgba(35,134,54,0.12)',
-              border: `1px solid ${accentColor}30`,
-            }}
-          >
-            <AlertTriangle
-              size={20}
-              style={{
-                color: accentColor,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Title */}
-        <div className="px-6 text-center">
-          <h3 className="text-white font-semibold text-[15px] mb-2">{title}</h3>
-          <p className="text-sm leading-relaxed" style={{ color: COLORS.muted }}>
-            {description}
-          </p>
-          {details && (
-            <div
-              className="mt-3 p-3 rounded-[8px] text-xs text-left font-mono whitespace-pre-wrap max-h-[120px] overflow-y-auto leading-relaxed"
-              style={{
-                background: '#0d1117',
-                border: `1px solid ${COLORS.divider}`,
-                color: COLORS.muted,
-              }}
-            >
-              {details}
-            </div>
-          )}
-        </div>
-
-        {/* Buttons */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 mt-2">
-          <button
-            onClick={onCancel}
-            disabled={loading}
-            className="px-4 py-2 rounded-[8px] text-sm transition-colors disabled:opacity-40"
-            style={{ color: COLORS.muted }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-[8px] text-white text-sm font-medium transition-all disabled:opacity-40"
-            style={{ background: accentColor }}
-            onMouseEnter={e => {
-              if (!loading) {
-                e.currentTarget.style.background =
-                  variant === 'danger' ? COLORS.btnDangerHover :
-                  variant === 'warning' ? COLORS.warning :
-                  COLORS.btnGreenHover;
-              }
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = accentColor;
-            }}
-          >
-            {loading && <Loader2 size={13} className="animate-spin" />}
-            {confirmLabel}
-          </button>
+    <Modal open={open} onClose={onCancel} dismissible={false} widthClass="w-[420px]">
+      <div className="flex justify-center pt-6 pb-2">
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center border ${ICON_CLASSES[variant]}`}
+        >
+          <AlertTriangle size={20} />
         </div>
       </div>
-    </div>
+
+      <div className="px-6 text-center">
+        <h3 className="text-foreground font-semibold text-[15px] mb-2">{title}</h3>
+        <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+        {details && (
+          <div className="mt-3 p-3 rounded-lg text-xs text-left font-mono whitespace-pre-wrap max-h-[120px] overflow-y-auto leading-relaxed bg-subtle border border-line/6 text-muted-foreground">
+            {details}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-3 px-6 py-4 mt-2">
+        <Button variant="ghost" disabled={loading} onClick={onCancel}>
+          {cancelLabel}
+        </Button>
+        <button
+          onClick={handleConfirm}
+          disabled={loading}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-on-accent transition-all disabled:opacity-40 disabled:cursor-not-allowed ${CONFIRM_CLASSES[variant]}`}
+        >
+          {loading && <Loader2 size={13} className="animate-spin" />}
+          {confirmLabel}
+        </button>
+      </div>
+    </Modal>
   );
 }

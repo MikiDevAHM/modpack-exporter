@@ -266,29 +266,22 @@ export interface AuthCheckResult {
   error?: string;
 }
 
-export interface VersionRecord {
-  id: string;
-  manifestVersion: number;
-  timestamp: string;
-  message: string;
-  author: string;
-  commitSha: string;
-}
-
-export interface SnapshotRecord {
-  id: string;
-  timestamp: string;
-  mode: 'dev' | 'prod';
-  modCount: number;
-  fileCount: number;
-}
-
 export type ProfileMode = 'dev' | 'prod';
 
 export interface PromoteDiffEntry {
   type: 'modAdded' | 'modRemoved' | 'modChanged' | 'fileChanged';
   path: string;
   name: string;
+}
+
+export type LogLevel = 'log' | 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+  id: number;
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  source: 'main' | 'renderer';
 }
 
 declare global {
@@ -335,7 +328,6 @@ declare global {
         onSyncProgress: (handler: (data: { stage: string; message: string; percent: number }) => void) => void;
         offSyncProgress: () => void;
       };
-      python: { syncMods: () => Promise<{ success: boolean; data?: any; error?: string }> };
       export: {
         run: (o: ExportOptions) => Promise<ExportResult>;
         mrpack: (o: { outputPath: string; version: string; changelog?: string; overwriteSnapshot?: boolean }) => Promise<{ success: boolean; path?: string; size?: number; error?: string }>;
@@ -363,17 +355,15 @@ declare global {
       modrinth: {
         getIcons: (slugs: string[]) => Promise<Record<string, string | null>>;
       };
-      versions: {
-        list: () => Promise<{ success: boolean; data?: VersionRecord[]; error?: string }>;
-        rollback: (versionId: string) => Promise<{ success: boolean; message?: string; error?: string }>;
-        current: () => Promise<{ success: boolean; manifestVersion?: number | null; error?: string }>;
+      logs: {
+        get: () => Promise<{ success: boolean; data?: LogEntry[]; error?: string }>;
+        clear: () => Promise<{ success: boolean; error?: string }>;
+        onEntry: (handler: (entry: LogEntry) => void) => void;
+        offEntry: () => void;
       };
       profile: {
         getMode: () => Promise<ProfileMode>;
         setMode: (mode: ProfileMode) => Promise<void>;
-        snapshot: () => Promise<{ success: boolean; data?: SnapshotRecord; error?: string }>;
-        listSnapshots: () => Promise<{ success: boolean; data?: SnapshotRecord[]; error?: string }>;
-        restore: (snapshotId: string) => Promise<{ success: boolean; error?: string }>;
         promote: () => Promise<{ success: boolean; copiedMods?: number; copiedFiles?: number; error?: string }>;
         promotePreview: () => Promise<{ success: boolean; data?: PromoteDiffEntry[]; error?: string }>;
       };

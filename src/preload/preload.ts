@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { LogEntry } from '../renderer/lib/types';
 
 export interface DeviceCodeInfo {
   user_code: string;
@@ -69,7 +70,6 @@ const api = {
     },
     offSyncProgress: () => ipcRenderer.removeAllListeners('sync:progress'),
   },
-  python: { syncMods: () => ipcRenderer.invoke('python:sync-mods') },
   export: {
     run: (o: unknown) => ipcRenderer.invoke('export:run', o),
     mrpack: (o: unknown) => ipcRenderer.invoke('export:mrpack', o),
@@ -103,22 +103,27 @@ const api = {
     },
     offScanProgress: () => ipcRenderer.removeAllListeners('modpack:scan-progress'),
   },
-  versions: {
-    list: () => ipcRenderer.invoke('versions:list'),
-    rollback: (versionId: string) => ipcRenderer.invoke('versions:rollback', { versionId }),
-    current: () => ipcRenderer.invoke('versions:current'),
-  },
   profile: {
     getMode: () => ipcRenderer.invoke('profile:get-mode'),
     setMode: (mode: string) => ipcRenderer.invoke('profile:set-mode', { mode }),
-    snapshot: () => ipcRenderer.invoke('profile:snapshot'),
-    listSnapshots: () => ipcRenderer.invoke('profile:list-snapshots'),
-    restore: (snapshotId: string) => ipcRenderer.invoke('profile:restore', { snapshotId }),
     promote: () => ipcRenderer.invoke('profile:promote'),
     promotePreview: () => ipcRenderer.invoke('profile:promote-preview'),
   },
   modrinth: {
     getIcons: (slugs: string[]) => ipcRenderer.invoke('modrinth:get-icons', slugs),
+  },
+  logs: {
+    /** Snapshot of the main-process log buffer (entries emitted so far). */
+    get: () => ipcRenderer.invoke('logs:get'),
+    /** Clear the main-process log buffer. */
+    clear: () => ipcRenderer.invoke('logs:clear'),
+    /** Subscribe to new main-process log entries. Replaces any previous handler. */
+    onEntry: (handler: (entry: LogEntry) => void) => {
+      ipcRenderer.removeAllListeners('logs:entry');
+      ipcRenderer.on('logs:entry', (_event, entry: LogEntry) => handler(entry));
+    },
+    /** Remove all log-entry listeners. */
+    offEntry: () => ipcRenderer.removeAllListeners('logs:entry'),
   },
   app: {
     openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),

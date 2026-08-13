@@ -3,6 +3,4 @@ dist/
 .vite/
 .env
 .sisyphus/
-
-.claude/
-CLAUDE.md
+.omo/

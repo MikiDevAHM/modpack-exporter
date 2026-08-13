@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Copy, ExternalLink, Github, Loader2, X, Check, AlertCircle } from 'lucide-react';
+import { Copy, ExternalLink, Github, Loader2, Check, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { DeviceCodeInfo } from '../../types';
+import Modal, { ModalHeader } from '../base/Modal';
+import Button from '../base/Button';
 
 interface Props {
   /** Closes the modal. If the device flow is still pending, this also aborts it. */
@@ -99,143 +101,104 @@ export default function LoginModal({ onClose, onSuccess }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div
-      className="fixed inset-0 flex items-center justify-center z-[60]"
-      style={{ background: 'rgba(0,0,0,0.78)' }}
-    >
-      <div
-        className="w-[440px] rounded-[12px] overflow-hidden shadow-2xl"
-        style={{ background: '#323234' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-          <div className="flex items-center gap-2">
-            <Github size={16} className="text-white" />
-            <h2 className="text-white font-semibold text-base">Sign in to GitHub</h2>
-          </div>
-          {status !== 'success' && (
-            <button
-              onClick={handleCancel}
-              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
-              aria-label="Cancel"
-            >
-              <X size={15} className="text-[#A9A9AB]" />
-            </button>
-          )}
+    <Modal open onClose={handleCancel} dismissible={false} widthClass="w-[440px]">
+      <ModalHeader onClose={handleCancel} locked={status === 'success'}>
+        <div className="flex items-center gap-2">
+          <Github size={16} className="text-foreground" />
+          <h2 className="text-foreground font-semibold text-base">Sign in to GitHub</h2>
         </div>
+      </ModalHeader>
 
-        {/* Body */}
-        <div className="p-6">
-          {status === 'requesting' && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 size={28} className="animate-spin text-[#A9A9AB]" />
-              <p className="text-[#A9A9AB] text-sm">Requesting device code…</p>
-            </div>
-          )}
+      {/* Body */}
+      <div className="p-6">
+        {status === 'requesting' && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <Loader2 size={28} className="animate-spin text-muted" />
+            <p className="text-muted text-sm">Requesting device code…</p>
+          </div>
+        )}
 
-          {status === 'waiting' && codeInfo && (
-            <>
-              <p className="text-[#A9A9AB] text-sm mb-5 leading-relaxed">
-                Enter the code below at{' '}
-                <button
-                  onClick={handleOpenBrowser}
-                  className="inline-flex items-center gap-0.5 hover:underline"
-                  style={{ color: '#0890FE' }}
-                >
-                  {codeInfo.verification_uri.replace(/^https?:\/\//, '')}
-                  <ExternalLink size={11} />
-                </button>{' '}
-                to authorize this app.
-              </p>
-
-              {/* User code */}
-              <div
-                className="rounded-[12px] p-5 flex flex-col items-center gap-3 mb-5"
-                style={{ background: '#1E1E1E', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
-                <span
-                  className="font-mono font-bold text-white tracking-[0.3em] select-text"
-                  style={{ fontSize: 32, lineHeight: 1.1 }}
-                >
-                  {codeInfo.user_code}
-                </span>
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-medium transition-colors hover:bg-white/10"
-                  style={{ color: '#A9A9AB', border: '1px solid rgba(255,255,255,0.08)' }}
-                >
-                  <Copy size={12} />
-                  Copy code
-                </button>
-              </div>
-
-              {/* Status row */}
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-[#A9A9AB]">
-                  <Loader2 size={12} className="animate-spin" />
-                  Waiting for approval…
-                </div>
-                {secondsLeft !== null && secondsLeft > 0 && (
-                  <span className="text-[#A9A9AB] font-mono">{formatExpiry(secondsLeft)}</span>
-                )}
-              </div>
-            </>
-          )}
-
-          {status === 'success' && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(32,172,100,0.18)' }}
-              >
-                <Check size={24} style={{ color: '#20AC64' }} />
-              </div>
-              <p className="text-white text-sm font-medium">Signed in successfully</p>
-            </div>
-          )}
-
-          {status === 'error' && (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(226,71,41,0.18)' }}
-              >
-                <AlertCircle size={24} style={{ color: '#E24729' }} />
-              </div>
-              <p className="text-white text-sm font-medium">Sign-in failed</p>
-              {error && <p className="text-[#A9A9AB] text-xs max-w-[320px]">{error}</p>}
+        {status === 'waiting' && codeInfo && (
+          <>
+            <p className="text-muted text-sm mb-5 leading-relaxed">
+              Enter the code below at{' '}
               <button
-                onClick={onClose}
-                className="mt-2 px-4 py-2 rounded-[8px] text-white text-sm font-medium transition-all"
-                style={{ background: '#0890FE' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#1a9dff')}
-                onMouseLeave={e => (e.currentTarget.style.background = '#0890FE')}
+                onClick={handleOpenBrowser}
+                className="inline-flex items-center gap-0.5 hover:underline text-primary"
               >
-                Close
+                {codeInfo.verification_uri.replace(/^https?:\/\//, '')}
+                <ExternalLink size={11} />
+              </button>{' '}
+              to authorize this app.
+            </p>
+
+            {/* User code */}
+            <div className="rounded-xl p-5 flex flex-col items-center gap-3 mb-5 bg-subtle border border-line/8">
+              <span
+                className="font-mono font-bold text-foreground tracking-[0.3em] select-text"
+                style={{ fontSize: 32, lineHeight: 1.1 }}
+              >
+                {codeInfo.user_code}
+              </span>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted border border-line/8 hover:bg-line/10 transition-colors"
+              >
+                <Copy size={12} />
+                Copy code
               </button>
             </div>
-          )}
-        </div>
 
-        {/* Footer with cancel during wait */}
-        {status === 'waiting' && (
-          <div className="flex items-center justify-between px-5 py-4 border-t border-white/[0.06]">
-            <button
-              onClick={handleOpenBrowser}
-              className="flex items-center gap-1.5 text-xs font-medium hover:underline"
-              style={{ color: '#0890FE' }}
-            >
-              Open browser <ExternalLink size={11} />
-            </button>
-            <button
-              onClick={handleCancel}
-              className="px-3 py-1.5 rounded-[8px] text-[#A9A9AB] text-xs font-medium hover:bg-white/10 transition-colors"
-            >
-              Cancel
-            </button>
+            {/* Status row */}
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-muted">
+                <Loader2 size={12} className="animate-spin" />
+                Waiting for approval…
+              </div>
+              {secondsLeft !== null && secondsLeft > 0 && (
+                <span className="text-muted font-mono">{formatExpiry(secondsLeft)}</span>
+              )}
+            </div>
+          </>
+        )}
+
+        {status === 'success' && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-success/15">
+              <Check size={24} className="text-success" />
+            </div>
+            <p className="text-foreground text-sm font-medium">Signed in successfully</p>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-brand/15">
+              <AlertCircle size={24} className="text-brand" />
+            </div>
+            <p className="text-foreground text-sm font-medium">Sign-in failed</p>
+            {error && <p className="text-muted text-xs max-w-[320px]">{error}</p>}
+            <Button variant="primary" className="mt-2" onClick={onClose}>
+              Close
+            </Button>
           </div>
         )}
       </div>
-    </div>
+
+      {/* Footer with cancel during wait */}
+      {status === 'waiting' && (
+        <div className="flex items-center justify-between px-5 py-4 border-t border-line/6 flex-shrink-0">
+          <button
+            onClick={handleOpenBrowser}
+            className="flex items-center gap-1.5 text-xs font-medium hover:underline text-primary"
+          >
+            Open browser <ExternalLink size={11} />
+          </button>
+          <Button variant="ghost" size="sm" onClick={handleCancel}>
+            Cancel
+          </Button>
+        </div>
+      )}
+    </Modal>
   );
 }
