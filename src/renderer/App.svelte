@@ -23,7 +23,7 @@
   import BrandLogo from './lib/components/common/BrandLogo.svelte';
   import GithubIcon from './lib/components/common/GithubIcon.svelte';
   import { prefetchModIcons } from './lib/utils/modIcons';
-  import { initSettingsCache } from './lib/utils/settingsCache';
+  import { initSettingsCache, getCachedSetting } from './lib/utils/settingsCache';
   import { toast } from './lib/state/toast.svelte';
   import { ipc } from './lib/ipc';
 
@@ -280,7 +280,7 @@
 
       // 2. Pull the full modpack. Progress streams via sync:progress (see effect).
       initState = 'pulling';
-      const pullRes = await ipc.git.pull();
+      const pullRes = await ipc.git.pull({ profilePath: getCachedSetting('modpackRoot') });
       if (!pullRes.success) {
         throw new Error(pullRes.error || 'Could not download the modpack.');
       }
@@ -382,7 +382,7 @@
           if (hasChanges) pullResult = result;
         };
 
-        const result = await ipc.git.pull();
+        const result = await ipc.git.pull({ profilePath: getCachedSetting('modpackRoot') });
         if (result?.success) {
           await loadGitStatus();
           applyResult(result);
@@ -390,7 +390,7 @@
           // Lock file from a previous crash — handler will have cleaned it; retry once
           console.warn('[auto-sync] index.lock detected, retrying in 2s\u2026');
           await new Promise(res => setTimeout(res, 2000));
-          const retry = await ipc.git.pull();
+          const retry = await ipc.git.pull({ profilePath: getCachedSetting('modpackRoot') });
           if (retry?.success) {
             await loadGitStatus();
             applyResult(retry);
@@ -446,7 +446,7 @@
   // ── Actions ────────────────────────────────────────────────────────────────
   async function handlePull() {
     const tid = toast.loading('Pulling latest\u2026');
-    const r = await ipc.git.pull();
+    const r = await ipc.git.pull({ profilePath: getCachedSetting('modpackRoot') });
     toast.dismiss(tid);
     if (r.success) {
       toast.success('Pulled & synced mods');

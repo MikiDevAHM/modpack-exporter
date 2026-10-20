@@ -100,8 +100,8 @@ export const ipc = {
   git: {
     ensureVersionsRepo: (): Promise<{ success: boolean; error?: string }> =>
       window.electron.git.ensureVersionsRepo(),
-    pull: (): Promise<PullResult> => window.electron.git.pull(),
-    push: (o: { message: string }): Promise<PushResult> => window.electron.git.push(o),
+    pull: (profile?: { profileId?: string; profilePath?: string }): Promise<PullResult> => window.electron.git.pull(profile),
+    push: (o: { message: string; profile?: { profileId?: string; profilePath?: string } }): Promise<PushResult> => window.electron.git.push(o),
     status: (): Promise<{ success: boolean; data?: SyncStatus; error?: string }> => window.electron.git.status(),
     stagedFiles: (): Promise<{ success: boolean; data?: string[] }> => window.electron.git.stagedFiles(),
     commitChanges: (sha: string): Promise<{ success: boolean; data?: CommitChanges; error?: string }> =>

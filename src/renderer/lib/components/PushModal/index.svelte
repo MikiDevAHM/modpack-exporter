@@ -18,6 +18,7 @@
   import ModStatusBadge from '../common/ModStatusBadge.svelte';
   import { toast } from '../../state/toast.svelte';
   import { ipc } from '../../ipc';
+import { getCachedSetting } from '../../utils/settingsCache';
 
   interface Props {
     onClose: () => void;
@@ -88,7 +89,7 @@
       progress = { percent: data.percent ?? 0, message: data.message ?? '', stage: data.stage ?? '' };
     });
     try {
-      const r = await ipc.git.push({ message: commitMessage.trim() });
+      const r = await ipc.git.push({ message: commitMessage.trim(), profile: { profilePath: getCachedSetting('modpackRoot') } });
       if (r.success) {
         pushedCommit = r.commit;
         progress = { percent: 100, message: 'Push complete!', stage: 'done' };
