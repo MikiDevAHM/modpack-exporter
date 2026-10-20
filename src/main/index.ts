@@ -98,7 +98,13 @@ autoUpdater.autoInstallOnAppQuit = true;
 let updaterConfigured = false;
 let updateDownloaded = false;
 
+function isPortableBuild(): boolean {
+  // electron-builder's portable target sets this env var at runtime.
+  return !!process.env.PORTABLE_EXECUTABLE_FILE;
+}
+
 function configureAutoUpdater(): void {
+  if (isPortableBuild()) return;
   if (updaterConfigured) return;
   updaterConfigured = true;
 
@@ -123,7 +129,7 @@ function configureAutoUpdater(): void {
 }
 
 async function checkForUpdate(): Promise<UpdateCheckResult> {
-  if (!app.isPackaged) return { updateAvailable: false };
+  if (!app.isPackaged || isPortableBuild()) return { updateAvailable: false };
   configureAutoUpdater();
 
   try {
@@ -146,7 +152,7 @@ async function checkForUpdate(): Promise<UpdateCheckResult> {
 }
 
 async function installUpdate(_downloadUrl?: string): Promise<void> {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || isPortableBuild()) return;
   configureAutoUpdater();
 
   if (updateDownloaded) {
@@ -162,6 +168,7 @@ async function installUpdate(_downloadUrl?: string): Promise<void> {
  * confirmation, downloads and installs it. Never throws.
  */
 async function runLaunchUpdateCheck(): Promise<void> {
+  if (isPortableBuild()) return;
   const result = await checkForUpdate();
   if (!result.updateAvailable) return;
 
@@ -890,9 +897,11 @@ app.on('ready', () => {
   runStartupScan();
   // Check for updates on launch (silent — only prompts if an update is found).
   // No-ops gracefully when the network is unavailable.
-  runLaunchUpdateCheck().catch(err =>
-    console.warn('[updater] launch check failed:', err)
-  );
+  if (!isPortableBuild()) {
+    runLaunchUpdateCheck().catch(err =>
+      console.warn('[updater] launch check failed:', err)
+    );
+  }
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

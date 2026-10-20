@@ -20,7 +20,7 @@ Built for the [Origin Realms Beyond (ORB)](https://modrinth.com/modpack/origin-r
 
 ## Features
 
-- **Professional desktop installers** — Windows NSIS/MSI, Linux AppImage/DEB/RPM, and macOS DMG/ZIP/PKG builds
+- **Two Windows distributions** — `*-setup-*.exe` (NSIS installer, auto-updates via GitHub Releases) and `*-portable-*.exe` (no installer, no auto-update; run anywhere)
 - **Hybrid storage** — mod `.jar` files are referenced via Modrinth CDN (manifest only), override files (configs, resource packs, shader packs) are synced via Git
 - **Smart merge** — locally-added mods are preserved during auto-sync, never deleted
 - **Push preview** — see exactly what will change before committing
@@ -35,7 +35,7 @@ Built for the [Origin Realms Beyond (ORB)](https://modrinth.com/modpack/origin-r
 
 ## Requirements
 
-- **Windows** (macOS/Linux packages are produced by the release workflow)
+- Windows, macOS, or Linux (installers produced by the release workflow)
 - A GitHub account with access to the [OR-Beyond organization](https://github.com/OR-Beyond)
 - Modrinth App installed with a development modpack profile
 
@@ -71,8 +71,8 @@ Built for the [Origin Realms Beyond (ORB)](https://modrinth.com/modpack/origin-r
 
 | Component | Technology |
 |-----------|-----------|
-| Desktop app | Electron + React + TypeScript |
-| UI | Tailwind CSS (dark theme) |
+| Desktop app | Electron + Svelte 5 + TypeScript |
+| UI | Tailwind CSS (dark theme, Svelte 5 runes) |
 | Git operations | `isomorphic-git` (pure JS, no system Git required) |
 | Modrinth API | Direct fetch for mod resolution, hashing, and caching |
 | GitHub integration | Octokit (OAuth device flow) |
@@ -112,7 +112,7 @@ The release workflow preserves signing as a conditional step so unsigned local b
 
 ```bash
 npm install
-npm run dev
+bun run build && bunx electron .
 ```
 
 ## Build and Release
