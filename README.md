@@ -135,6 +135,17 @@ The GitHub Actions workflow builds Windows, Linux, and macOS installers, creates
 
 ---
 
+## macOS (unsigned build)
+
+This app is not code-signed. On macOS, after installing the DMG, the system may
+block the first launch. To allow it, run in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/ORB Modpack Exporter.app"
+```
+
+Alternatively, right-click the app and choose "Open" the first time.
+
 ## License
 
 MIT
