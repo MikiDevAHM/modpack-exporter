@@ -1,5 +1,5 @@
 <!--
-  Toast renderer — reproduces react-hot-toast's bottom-right stack.
+  Toast renderer — reproduces toast lib's bottom-right stack.
 
   Layout/animations mirror the original library: each toast is absolutely
   positioned at the bottom, offset upward by the heights of newer toasts, and

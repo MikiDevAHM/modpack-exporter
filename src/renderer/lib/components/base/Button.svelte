@@ -1,7 +1,7 @@
 <!--
   Button — the shared action button.
 
-  Variants/sizes mirror the old React component; `icon` accepts any Svelte
+  Variants/sizes mirror the old component; `icon` accepts any Svelte
   component (lucide icons, GithubIcon) and is rendered via `<svelte:component>`.
 -->
 <script lang="ts">

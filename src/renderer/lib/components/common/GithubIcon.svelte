@@ -1,7 +1,7 @@
 <!--
   Hand-written GitHub mark icon.
 
-  lucide v1 dropped brand icons, so this reproduces the old lucide-react
+  lucide v1 dropped brand icons, so this reproduces the old lucide
   `Github` glyph (two paths, 24x24 viewBox) with the same prop surface the
   other lucide icons expose (`size`, `class`, `strokeWidth`).
 -->

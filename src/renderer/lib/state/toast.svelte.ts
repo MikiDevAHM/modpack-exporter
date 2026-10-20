@@ -1,7 +1,7 @@
 /**
  * Toast store (runes module).
  *
- * A small, dependency-free replacement for react-hot-toast that reproduces the
+ * A small, dependency-free replacement for toast lib that reproduces the
  * same visual language: bottom-right stack, 4000ms auto-dismiss, pause on
  * hover, and the success/error/loading icon treatments. The rendering lives in
  * `Toaster.svelte`; this module owns the state and the public API.

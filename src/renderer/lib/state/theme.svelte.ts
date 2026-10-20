@@ -1,8 +1,8 @@
 /**
  * Theme state (runes module).
  *
- * Ports the old React ThemeProvider: the active theme id lives in a rune so
- * components can read it reactively, and every change is applied to <html> as
+ * Ports the old ThemeProvider: the active theme id lives in a rune so
+ * components can read it live, and every change is applied to <html> as
  * inline CSS custom properties plus persisted to localStorage.
  */
 
