@@ -25,7 +25,6 @@ let guardViolations: { kind: string; detail: string; at: string }[] = [];
 
 export function recordViolation(kind: string, detail: string): void {
   guardViolations.push({ kind, detail, at: new Date().toISOString() });
-  // eslint-disable-next-line no-console
   console.error(`[sandbox-guard] ${kind}: ${detail}`);
 }
 
