@@ -11,7 +11,7 @@
         "adm-zip": "^0.5.18",
         "electron-store": "^8.2.0",
         "electron-updater": "^6.8.9",
-        "isomorphic-git": "^1.38.6",
+        "isomorphic-git": "1.44.3",
         "js-yaml": "4.3.2",
       },
       "devDependencies": {
@@ -711,7 +711,7 @@
 
     "isexe": ["isexe@3.1.5", "", {}, "sha512-6B3tLtFqtQS4ekarvLVMZ+X+VlvQekbe4taUkf/rhVO3d/h0M2rfARm/pXLcPEsjjMsFgrFgSrhQIxcSVrBz8w=="],
 
-    "isomorphic-git": ["isomorphic-git@1.38.6", "", { "dependencies": { "async-lock": "^1.4.1", "clean-git-ref": "^2.0.1", "crc-32": "^1.2.0", "diff3": "0.0.3", "ignore": "^5.1.4", "minimisted": "^2.0.0", "pako": "^1.0.10", "pify": "^4.0.1", "readable-stream": "^4.0.0", "sha.js": "^2.4.12", "simple-get": "^4.0.1" }, "bin": { "isogit": "cli.cjs" } }, "sha512-lCmZ1m2R0LqbZ4QATtLCxhwNBQPNJc74R81dfyF90yLqP8xs2DZLedcnkVuRj6th/L2HYoIvWP5lBpS1ooAagw=="],
+    "isomorphic-git": ["isomorphic-git@1.44.3", "", { "dependencies": { "async-lock": "^1.4.1", "clean-git-ref": "^2.0.1", "crc-32": "^1.2.0", "diff3": "0.0.3", "ignore": "^5.1.4", "minimisted": "^2.0.0", "pako": "^1.0.10", "pify": "^4.0.1", "readable-stream": "^4.0.0", "sha.js": "^2.4.12", "simple-get": "^4.0.1" }, "bin": { "isogit": "cli.cjs" } }, "sha512-xlEIMsVUrMfOR25F4jWB9He9s/rUHWsgfJJJ3zpdwFssv9X2QfoIUyYH9CEFok9yk2tx2UDipj2gJ+KVvV/qGA=="],
 
     "jake": ["jake@10.9.4", "", { "dependencies": { "async": "^3.2.6", "filelist": "^1.0.4", "picocolors": "^1.1.1" }, "bin": "bin/cli.js" }, "sha512-wpHYzhxiVQL+IV05BLE2Xn34zW1S223hvjtqk0+gsPrwd/8JNLXJgZZM/iPFsYc1xyphF+6M6EvdE5E9MBGkDA=="],
 
