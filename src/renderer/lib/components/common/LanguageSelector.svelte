@@ -42,7 +42,7 @@
     >
       {#each locales as l (l.code)}
         <option value={l.code}>
-          {flag(l.code)} {l.meta.nativeName}{l.meta.nativeName !== l.meta.englishName ? ` — ${l.meta.englishName}` : ''}
+          {flag(l.code)} {l.meta.nativeName}
         </option>
       {/each}
     </select>
