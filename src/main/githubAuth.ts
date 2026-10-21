@@ -126,7 +126,6 @@ export async function startDeviceAuth(
     let pollIntervalMs = Math.max((codeData.interval || 5) * 1000, MIN_POLL_INTERVAL_MS);
     const deviceExpiresAt = startTime + Math.min(codeData.expires_in * 1000, MAX_DURATION_MS);
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       if (signal.aborted) throw new Error('Authentication aborted');
       if (Date.now() > deviceExpiresAt) throw new Error('Device code expired');
