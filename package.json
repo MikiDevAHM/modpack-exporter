@@ -25,7 +25,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "bun run build && bunx electron-builder --config electron-builder.config.cjs --dir",
-    "dist": "bun run build && bunx electron-builder --config electron-builder.config.cjs"
+    "dist": "bun run build && bunx electron-builder --config electron-builder.config.cjs",
+    "dev:sandbox": "ORB_SANDBOX=1 bun run build && ORB_SANDBOX=1 bunx electron .",
+    "test:sandbox": "ORB_SANDBOX=1 bun run test"
   },
   "author": "ORB Team",
   "license": "MIT",

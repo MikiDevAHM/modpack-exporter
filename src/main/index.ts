@@ -8,6 +8,7 @@ import yaml from 'js-yaml';
 import { autoUpdater } from 'electron-updater';
 
 import { store, StoreSchema } from './store';
+const isSandbox = __SANDBOX__;
 import { IsomorphicGitProvider } from './git';
 import { buildExport } from './export';
 import { publishVersion } from './export/modrinth';
@@ -806,6 +807,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 620,
     backgroundColor: '#1E1E1E',
+    title: isSandbox ? 'ORB Modpack Exporter — SANDBOX' : 'ORB Modpack Exporter',
     frame: false,
     icon: getAppIconPath(),
     webPreferences: {
@@ -891,7 +893,15 @@ function createWindow() {
   console.log('[main] window created, visible:', mainWindow.isVisible(), mainWindow.getBounds());
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
+  if (isSandbox) {
+    const sb = await import('./sandbox.js');
+    sb.installNetworkGuard();
+    sb.ensureSandboxRoot();
+    ipcMain.handle('sandbox:getViolations', () => sb.getGuardViolations());
+    ipcMain.handle('sandbox:reset', () => { sb.resetGuardViolations(); return { success: true }; });
+    ipcMain.handle('sandbox:root', () => sb.sandboxRoot());
+  }
   registerIpc();
   createWindow();
   runStartupScan();
