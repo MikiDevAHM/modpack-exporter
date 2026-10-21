@@ -10,6 +10,7 @@
   import Package from '@lucide/svelte/icons/package';
   import type { Component } from 'svelte';
   import ProfileSelector from '../SettingsModal/ProfileSelector.svelte';
+  import LanguageSelector from '../common/LanguageSelector.svelte';
   import { getCachedSetting, setCachedSetting } from '../../utils/settingsCache';
   import { themeState } from '../../state/theme.svelte';
   import { THEMES } from '../../theme/themes';
@@ -366,6 +367,12 @@
                   </div>
                 </button>
               {/each}
+            </div>
+            <div class="mt-4">
+              <LanguageSelector
+                label="Language"
+                description="Choose the display language for the whole interface. Applied instantly."
+              />
             </div>
           </Card>
         </div>
