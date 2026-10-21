@@ -24,6 +24,7 @@
   import Toggle from '../base/Toggle.svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import { toast } from '../../state/toast.svelte';
+  import { i18n, locales } from '../../i18n';
   import { ipc } from '../../ipc';
 
   interface Props {
@@ -379,7 +380,20 @@
             <label class={LABEL_CLASSES} for="settings-modpack-root">
               Modpack Root Directory <span class="text-brand">*</span>
             </label>
-            <ProfileSelector selectedPath={modpackRoot} onSelected={handleProfileSelected} />
+            <div class="mb-4">
+    <label for="lang-select" class="block text-xs font-medium text-muted-foreground mb-1">Language</label>
+    <select
+      id="lang-select"
+      class="w-full rounded-md border border-line bg-card px-3 py-2 text-sm text-foreground"
+      value={i18n.locale}
+      onchange={(e) => i18n.setLocale((e.target as HTMLSelectElement).value)}
+    >
+      {#each locales as l (l.code)}
+        <option value={l.code}>{l.meta.nativeName}</option>
+      {/each}
+    </select>
+  </div>
+  <ProfileSelector selectedPath={modpackRoot} onSelected={handleProfileSelected} />
           </Card>
 
           <Card class="p-4 md:col-span-2">

@@ -27,7 +27,16 @@
     "package": "bun run build && bunx electron-builder --config electron-builder.config.cjs --dir",
     "dist": "bun run build && bunx electron-builder --config electron-builder.config.cjs",
     "dev:sandbox": "ORB_SANDBOX=1 bun run build && ORB_SANDBOX=1 bunx electron .",
-    "test:sandbox": "ORB_SANDBOX=1 bun run test"
+    "test:sandbox": "ORB_SANDBOX=1 bun run test",
+    "i18n:check": "bun run scripts/i18n/check.ts",
+    "i18n:lint": "bun run scripts/i18n/lint.ts",
+    "i18n:new": "bun run scripts/i18n/new.ts",
+    "i18n:stats": "bun run scripts/i18n/stats.ts",
+    "release:prepare": "bun run scripts/release/prepare.ts",
+    "release:tag": "bun run scripts/release/tag.ts",
+    "release:rebuild": "bun run scripts/release/rebuild.ts",
+    "release:retag": "bun run scripts/release/retag.ts",
+    "release:status": "bun run scripts/release/status.ts"
   },
   "author": "ORB Team",
   "license": "MIT",
