@@ -2,7 +2,7 @@ import { parseLang } from './parser';
 
 export type { LangFile, LangMeta } from './parser';
 
-const modules = import.meta.glob('/src/renderer/locales/*.lang', { eager: true });
+const modules = import.meta.glob('../../locales/*.lang', { eager: true });
 const isDev = import.meta.env.DEV;
 
 export interface LocaleEntry {
