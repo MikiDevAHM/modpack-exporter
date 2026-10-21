@@ -24,7 +24,7 @@
   import Toggle from '../base/Toggle.svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import { toast } from '../../state/toast.svelte';
-  import { i18n, locales } from '../../i18n';
+  import { i18n, locales } from '../../i18n/index.svelte';
   import { ipc } from '../../ipc';
 
   interface Props {
