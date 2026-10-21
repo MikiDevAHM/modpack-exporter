@@ -14,6 +14,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { store } from './store';
+import { isSandbox } from './sandbox';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,13 @@ const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 
 const MIN_POLL_INTERVAL_MS = 5_000;
 const MAX_DURATION_MS = 10 * 60 * 1000; // 10 minutes hard ceiling
+
+// Inline 1x1 avatar so sandbox never requests an external image and trips the network guard.
+const SANDBOX_AVATAR_DATA_URI =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#5865F2"/></svg>'
+  );
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +96,9 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 export async function startDeviceAuth(
   onDeviceCode: (info: DeviceCodeInfo) => void
 ): Promise<string> {
+  if (isSandbox) {
+    return 'sandbox-fake-token';
+  }
   // Cancel any prior flow before starting a new one.
   abortActive('superseded by new auth attempt');
 
@@ -188,16 +199,19 @@ export async function startDeviceAuth(
 // ─── Token + Octokit accessors ────────────────────────────────────────────────
 
 export function getToken(): string | null {
+  if (isSandbox) return 'sandbox-fake-token';
   const t = store.get('githubToken');
   return t && t.length > 0 ? t : null;
 }
 
 export function logout(): void {
+  if (isSandbox) return;
   abortActive('logout');
   store.set('githubToken', '');
 }
 
 export function getOctokit(): Octokit | null {
+  if (isSandbox) return null;
   const token = getToken();
   if (!token) return null;
   return new Octokit({ auth: token });
@@ -212,6 +226,16 @@ export async function checkAuth(): Promise<{
   user?: { login: string; avatar_url: string; html_url: string };
   error?: string;
 }> {
+  if (isSandbox) {
+    return {
+      authenticated: true,
+      user: {
+        login: 'sandbox-user',
+        avatar_url: SANDBOX_AVATAR_DATA_URI,
+        html_url: 'https://github.com/sandbox-user',
+      },
+    };
+  }
   const octokit = getOctokit();
   if (!octokit) return { authenticated: false };
   try {

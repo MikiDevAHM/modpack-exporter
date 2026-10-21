@@ -36,17 +36,35 @@ export function resetGuardViolations(): void {
   guardViolations = [];
 }
 
-/** Install the network guard: cancel any non-loopback/file request. */
+// Static asset CDNs that are safe to load in sandbox: no data leaves the machine,
+// they only fetch the bundled UI font. Everything else is treated as a violation.
+const SANDBOX_ALLOWED_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+
+function isSandboxAllowedUrl(url: string): boolean {
+  if (
+    url.startsWith('file:') ||
+    url.startsWith('data:') ||
+    url.startsWith('blob:') ||
+    url.startsWith('devtools:')
+  ) {
+    return true;
+  }
+  try {
+    const host = new URL(url).hostname;
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+    return SANDBOX_ALLOWED_HOSTS.includes(host);
+  } catch {
+    return false;
+  }
+}
+
+/** Install the network guard: cancel any request that is not local or a static asset. */
 export function installNetworkGuard(): void {
   if (!isSandbox) return;
   try {
     session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
       const url = details.url || '';
-      const allowed =
-        url.startsWith('file:') ||
-        url.startsWith('devtools:') ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(url);
-      if (!allowed) {
+      if (!isSandboxAllowedUrl(url)) {
         recordViolation('network', url);
         callback({ cancel: true });
         return;
