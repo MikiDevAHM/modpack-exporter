@@ -795,7 +795,7 @@ function logError(context: string, err: unknown): void {
 }
 
 function createWindow() {
-  const preloadPath = path.join(__dirname, 'preload.js');
+  const preloadPath = path.join(__dirname, 'preload.cjs');
   const devServerUrl = getRendererDevServerUrl();
   const rendererWindowName = getRendererWindowName();
   console.log('[main] preload path:', preloadPath);

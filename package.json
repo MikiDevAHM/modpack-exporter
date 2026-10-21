@@ -3,7 +3,7 @@
   "productName": "ORB Modpack Exporter",
   "version": "2.1.4",
   "description": "Collaborate via GitHub, export .mrpack files, and track changes",
-  "main": ".vite/build/index.js",
+  "main": ".vite/build/index.cjs",
   "repository": {
     "type": "git",
     "url": "https://github.com/OR-Beyond/modpack-exporter.git"
