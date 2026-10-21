@@ -34,13 +34,9 @@
   {#if description}
     <p class="text-[11px] text-muted-foreground mb-2 leading-snug">{description}</p>
   {/if}
-  <div class="relative">
-    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base leading-none">
-      {flag(i18n.locale)}
-    </span>
-    <select
+  <select
       id="language-select"
-      class="w-full rounded-md border border-line bg-card pl-9 pr-3 py-2 text-sm text-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-primary/40"
+      class="w-full rounded-md border border-line bg-card px-3 py-2 text-sm text-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-primary/40"
       value={i18n.locale}
       onchange={(e) => i18n.setLocale((e.target as HTMLSelectElement).value)}
     >
@@ -50,5 +46,4 @@
         </option>
       {/each}
     </select>
-  </div>
 </div>
