@@ -30,9 +30,8 @@ export function findLocale(code: string): LocaleEntry | undefined {
 
 const STORAGE_KEY = 'orb.locale';
 
-let currentCode = $state<string>(localStorage.getItem(STORAGE_KEY) || 'en');
-// ensure valid
-if (!findLocale(currentCode)) currentCode = 'en';
+const initialLocale = localStorage.getItem(STORAGE_KEY) || 'en';
+let currentCode = $state<string>(findLocale(initialLocale) ? initialLocale : 'en');
 
 export const i18n = {
   get locale(): string { return currentCode; },

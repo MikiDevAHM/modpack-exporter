@@ -32,7 +32,6 @@ import { initMainLogger, registerLogIpc } from './logger';
 
 // Must precede any console.* call so every main-process log reaches LogsPage.
 initMainLogger();
-registerLogIpc();
 
 const gitProvider = new IsomorphicGitProvider();
 
@@ -1295,6 +1294,7 @@ async function ensureGitIdentity(versionsDir: string, githubUser: string): Promi
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
 function registerIpc() {
+  registerLogIpc();
   // App controls
   ipcMain.handle('app:minimize', () => mainWindow?.minimize());
   ipcMain.handle('app:maximize', () => { mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize(); });
