@@ -368,12 +368,11 @@
                 </button>
               {/each}
             </div>
-            <div class="mt-4">
-              <LanguageSelector
-                label="Language"
-                description="Choose the display language for the whole interface. Applied instantly."
-              />
-            </div>
+          </Card>
+
+          <Card class="p-4 md:col-span-2">
+            {@render sectionTitle('Language', 'Display language for the whole interface. Applied instantly and remembered across launches.')}
+            <LanguageSelector description="Choose your preferred language." />
           </Card>
         </div>
       </div>
