@@ -3,11 +3,11 @@
   let violations = $state<{ kind: string; detail: string; at: string }[]>([]);
 
   async function refresh() {
-    violations = await window.electron.sandbox.getViolations();
+    violations = await window.electron.sandbox!.getViolations();
   }
 
   async function reset() {
-    await window.electron.sandbox.reset();
+    await window.electron.sandbox!.reset();
     await refresh();
   }
 
