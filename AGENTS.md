@@ -112,3 +112,9 @@ Desktop tool for Minecraft modpack developers (Origin Realms Beyond) to sync mod
 - Dev-only code is gated by `__DEV__` (build-time, `ORB_DEV=1`) and lives under dev-only paths; production bundles exclude it.
 - Discord notifications use Components V2 (see docs/discord-notifications.md); every payload must pass `validateWebhookV2Payload`.
 - Mod icons resolve through the shared icon pipeline (main: `resolveModIcon`/`lookupModrinthHash`; renderer: `ModIcon`/`ModIconLazy`).
+
+## Secret policy
+- Never commit webhook URLs, tokens, OAuth credentials or CI secrets.
+- Secrets supplied via safeStorage (app) or env vars (scripts).
+- `bun run secret-scan` must be green; it runs in the gate.
+- The legacy hardcoded Discord webhook is considered compromised; owner must rotate it.
