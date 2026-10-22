@@ -36,7 +36,8 @@
     "release:tag": "bun run scripts/release/tag.ts",
     "release:rebuild": "bun run scripts/release/rebuild.ts",
     "release:retag": "bun run scripts/release/retag.ts",
-    "release:status": "bun run scripts/release/status.ts"
+    "release:status": "bun run scripts/release/status.ts",
+    "verify:mrpack": "bun run scripts/verify-mrpack.ts"
   },
   "author": "ORB Team",
   "license": "MIT",
