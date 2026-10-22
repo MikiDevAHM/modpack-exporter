@@ -69,7 +69,7 @@ export function initLogger(): void {
 
   // Seed with the main-process buffer, then stream new entries live so nothing
   // between the snapshot and the subscription is lost.
-  void window.electron.logs
+  void window.electron.logs!
     .get()
     .then(res => {
       if (res.success && res.data) {
@@ -77,14 +77,14 @@ export function initLogger(): void {
       }
     })
     .catch(() => {});
-  window.electron.logs.onEntry(entry => addEntry(entry));
+  window.electron.logs!.onEntry(entry => addEntry(entry));
 }
 
 /** Restore original console functions (useful for cleanup). */
 function destroyLogger(): void {
   if (!installed) return;
   installed = false;
-  window.electron.logs.offEntry();
+  window.electron.logs!.offEntry();
   if (originalFns.log) console.log = originalFns.log;
   if (originalFns.info) console.info = originalFns.info;
   if (originalFns.warn) console.warn = originalFns.warn;
@@ -110,7 +110,7 @@ export function clearLogs(): void {
   entries.length = 0;
   nextId = 0;
   mainIds.clear();
-  void window.electron.logs.clear().catch(() => {});
+  void window.electron.logs!.clear().catch(() => {});
   notifyListeners();
 }
 
